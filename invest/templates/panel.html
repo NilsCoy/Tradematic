@@ -1,0 +1,64 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" /> -->
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+        <link href="{% static 'css/panel-styles.css'%}" type="text/css" rel="stylesheet" />
+        <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+        <title>Tradematic Panel</title>
+    </head>
+
+
+    
+    <header>
+        <div class="logo-div">
+            <div class="logo">
+                <img src="{% static 'assets/site_logo.svg'%}" alt="logo" class="site-logo">
+                Панель
+            </div>
+            <div class="underline"></div>
+        </div>
+        <div class="exit">
+            <p><a href="{% url 'index_page' %}">На сайт</a></p>
+            <p>
+                <form method="post">
+                    {% csrf_token %}
+                    <button type="submit" name="form-logout">Выйти</button>
+                </form>
+            </p>
+        </div>
+    </header>
+
+
+
+
+
+
+    <body>
+        {% if messages %}
+            {% for message in messages %}
+                <script>
+                    alert('{{ message }}');
+                </script>
+            {% endfor %}
+        {% endif %}
+        <nav>
+            <div class="title"><span class="gradient">Главное</span></div>
+            <a href="?page=profile"><button class="profile">Профиль</button></a>
+            <a href="?page=portfolio"><button class="portfolio">Портфели</button></a>
+        </nav>
+        <div class="content">
+            {% include template %}
+        </div>
+    </body>
+
+
+</html>

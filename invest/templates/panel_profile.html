@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+{% load static %}
+
+<div class="profile">
+    <h1><span class="gradient">Профиль пользователя</span></h1>
+    <div class="cart">
+        <h2><span class="gradient">Сменить пароль</span></h2>
+        <form method="post" class="form">
+            {% csrf_token %}
+            <h6><span class="gradient">Текущий пароль</span></h6>
+            <input type="password" name="Password" required>
+            <h6><span class="gradient">Новый пароль</span></h6>
+            <input type="password" name="New_Password" required>
+            <h6><span class="gradient">Подтвердить новый пароль</span></h6>
+            <input type="password" name="New_Password2" required>
+            <p><button type="submit" name="reset-password">Обновить пароль</button></p>
+        </form>
+    </div>
+</div>
+
+</html>

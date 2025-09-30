@@ -1,0 +1,77 @@
+<html>
+
+<script>
+{% for chart in var.charts %}
+document.addEventListener('DOMContentLoaded', function() {
+// Инициализация каждого графика
+new Chart(document.getElementById('chart-{{ forloop.counter }}'), {
+    type: '{{ chart.chart_type|default:"line" }}',
+            data: {
+                labels: {{ chart.labels|safe }},
+                datasets: [
+                    {
+                        label: 'Реальная цена акции',
+                        data: {{ chart.data|safe }},
+                        borderWidth: 1,
+                        borderColor: 'rgb(189, 238, 229)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Предсказанная цена акции',
+                        data: {{ chart.predict_data|safe }},
+                        borderWidth: 1,
+                        borderColor: 'rgb(31,164,135)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    },
+                    x: {
+                        ticks: {
+                        maxRotation: 45,
+                        minRotation: 45
+                        }
+                    }
+                },
+                plugins: {
+                    zoom: {
+                        zoom: {
+                            wheel: {
+                                enabled: true, // включить масштабирование колесиком мыши
+                            },
+                            pinch: {
+                                enabled: true // включить масштабирование на тач-устройствах
+                            },
+                            mode: 'x', // разрешить масштабирование по обеим осям
+                            limits: {
+                                x: {min: 'original', max: 'original'}
+                            }
+                        },
+                        pan: {
+                            enabled: true, // включить перемещение
+                            mode: 'x', // разрешить перемещение по обеим осям
+                        }
+                    }
+                }
+            }
+});
+});
+{% endfor %}
+</script>
+
+
+<div class="portfolio">
+    {% for chart in var.charts %}
+    <div class="chart-container">
+        <h3><span class="gradient">{{ chart.title }} (последние 30 часов)</span></h3>
+        <canvas id="chart-{{ forloop.counter }}" width="800" height="400"></canvas>
+    </div>
+    {% endfor %}
+</div>
+
+</html>
