@@ -8,7 +8,6 @@ dependencies = [
     "aiohttp>=3.13.0",
     "django==4.2.23",
     "matplotlib>=3.9.4",
-    "numpy>=2.0.2",
     "pandas>=2.3.3",
     "scikit-learn>=1.6.1",
     "tensorboard==2.19.0",
@@ -24,3 +23,20 @@ dev = [
     "pytest>=8.4.2",
     "ruff>=0.14.0",
 ]
+
+[tool.ruff]
+fix = true
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "single"
+docstring-code-format = true
+
+[tool.ruff.lint]
+ignore = ["I001","F403","F405"]
+preview = true
+
+[tool.mypy]
+plugins = ['pydantic.mypy']
+strict=true
