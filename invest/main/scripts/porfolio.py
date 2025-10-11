@@ -1,35 +1,45 @@
-from django.contrib import messages
-from main.models import UserTokens
-from main.scripts.model import *
-from main.scripts.api import *
-from django.shortcuts import redirect
+import json
+from datetime import datetime, timedelta
 
 import pandas as pd
-import json
+from django.contrib import messages
+from django.shortcuts import redirect
+from main.scripts.api import (
+    get_account,
+    get_client,
+    get_elements_in_portfolio,
+    get_hourly_data,
+    get_name_stock,
+    save_to_csv,
+)
+from main.scripts.model import predict_data_from_array, preload_model
 
-def add_portfolio(r, c):
-    username = r.user
-    token = r.POST['Token']
+from main.models import UserTokens
+
+
+def add_portfolio(request):
+    username = request.user
+    token = request.POST['Token']
     if not token:
-        messages.error(r, 'Неверный токен!')
+        messages.error(request, 'Неверный токен!')
     else:
-        obj, created = UserTokens.objects.get_or_create(
-            username=username,
-            token=token,
-            defaults={'username': username, 'token': token}
+        _, created = UserTokens.objects.get_or_create(
+            username=username, token=token, defaults={'username': username, 'token': token}
         )
         if not created:
-            messages.error(r, 'Токен уже добавлен!')
+            messages.error(request, 'Токен уже добавлен!')
     return redirect('panel')
 
-def remove_portfolio(r, c):
-    username = str(r.user)
-    token_id = r.POST
+
+def remove_portfolio(request):
+    username = str(request.user)
+    token_id = request.POST
     portfolio = get_portfolio(username)
     for j in portfolio:
         if str(j['id']) in str(token_id):
             UserTokens.objects.filter(username=username, token=j['token']).delete()
     return redirect('panel')
+
 
 def get_portfolio(username):
     tokens = list(UserTokens.objects.filter(username=username).values_list('token', flat=True))
@@ -54,17 +64,18 @@ def get_portfolio(username):
             total_cost += i['cur_price'] * i['quantity']
             if i['instrument_type'] != 'currency':
                 total_stocks += i['quantity']
-        portfolio['total_cost'] = round(total_cost,2)
+        portfolio['total_cost'] = round(total_cost, 2)
         portfolio['total_stocks'] = int(total_stocks)
 
         content.append(portfolio)
 
     return content
 
+
 def chart_view(token, figi):
     with get_client(token) as client:
         data = get_hourly_data(client, figi, hours=24 * 3)
-        save_to_csv(data,'main/scripts/datasets/stock_data.csv')
+        save_to_csv(data, 'main/scripts/datasets/stock_data.csv')
 
     df = pd.read_csv('main/scripts/datasets/stock_data.csv', encoding='CP1251')
     data = df['Цена'].tolist()
@@ -85,10 +96,11 @@ def chart_view(token, figi):
         'data': json.dumps(data),
         'predict_data': predicted_data,
         'title': get_name_stock(token, figi),
-        'chart_type': 'line'  # Может быть 'bar', 'pie', 'doughnut' и т.д.
+        'chart_type': 'line',  # Может быть 'bar', 'pie', 'doughnut' и т.д.
     }
 
     return chart
+
 
 def get_charts(username, profile_id):
     portfolio = get_portfolio(username)
