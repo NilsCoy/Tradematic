@@ -5,14 +5,18 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "aiohttp==3.12.13",
+    "aiohttp>=3.13.0",
     "django==4.2.23",
-    "matplotlib==3.9.4",
-    "pandas==2.3.0",
-    "scikit-learn==1.6.1",
+    "matplotlib>=3.9.4",
+    "numpy>=2.0.2",
+    "pandas>=2.3.3",
+    "scikit-learn>=1.6.1",
+    "tensorboard==2.19.0",
+    "tensorboard-data-server==0.7.2",
     "tensorflow==2.19.0",
-    "tinkoff-investments==0.2.0b114",
-    "tqdm==4.67.1",
+    "tensorflow-io-gcs-filesystem==0.31.0",
+    "tinkoff-investments>=0.2.0b117",
+    "tqdm>=4.67.1",
 ]
 
 [dependency-groups]
