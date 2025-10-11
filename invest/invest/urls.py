@@ -19,7 +19,7 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
 
-from main.views import index_page, blog_page, about_page, panel, user_logout, check_auth
+from main.views import index_page, blog_page, about_page, panel, check_auth
 
 urlpatterns = [
     path('admin/', admin.site.urls),

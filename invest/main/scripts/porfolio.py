@@ -2,7 +2,7 @@ from django.contrib import messages
 from main.models import UserTokens
 from main.scripts.model import *
 from main.scripts.api import *
-from django.shortcuts import render, redirect
+from django.shortcuts import redirect
 
 import pandas as pd
 import json

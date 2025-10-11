@@ -1,9 +1,7 @@
 import os
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
-import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 def preload_model(name=''):
     script_dir = os.path.dirname(os.path.abspath(__file__))

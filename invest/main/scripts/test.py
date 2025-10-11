@@ -1,4 +1,3 @@
-import numpy as np
 
 from main.scripts.model import *
 from main.scripts.api import *

@@ -1,7 +1,6 @@
 from django.contrib.auth import authenticate, login, logout, models, update_session_auth_hash
 from django.shortcuts import render, redirect
 from django.http import JsonResponse
-from django.template.context_processors import request
 from django.contrib.auth.hashers import check_password
 from django.contrib import messages
 

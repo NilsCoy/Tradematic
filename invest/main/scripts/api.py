@@ -1,14 +1,9 @@
 import tinkoff.invest as ti
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
 import csv
-import os
 import grpc
-import time
-from tinkoff.invest import Client, OrderDirection, OrderType, Quotation, MoneyValue, InstrumentIdType
-from tinkoff.invest.services import UsersService
+from tinkoff.invest import InstrumentIdType
 from tqdm import tqdm
 
 # Инициализация клиента
