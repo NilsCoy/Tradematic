@@ -1,7 +1,9 @@
 from django.http.response import HttpResponse
 from django.shortcuts import render
 from main.scripts.auth import login_user, logout_user, register_user, reset_password
-from main.scripts.porfolio import add_portfolio, get_charts, get_portfolio, remove_portfolio
+from main.scripts.porfolio import add_portfolio, get_charts, get_portfolio, remove_portfolio, chart_view, get_portfolio_from_id
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 
 
 def index_page(request):
@@ -32,14 +34,14 @@ def panel(request):
         'portfolio': 'panel_portfolio.html',
         'token': 'panel_portfolio_token.html',
     }
-    var = {'username': request.user, 'tokens': get_portfolio(request.user), 'self_token': None, 'charts': []}
+    var = {'username': request.user, 'tokens': get_portfolio(request.user), 'self_token': '', 'portfolio': None}
 
     try:
         var['self_token'] = page.split('-')[1]
-        var['charts'] = get_charts(request.user, var['self_token'])
+        # var['charts'] = get_charts(request.user, var['self_token'])
+        var['portfolio'] = get_portfolio_from_id(request.user, var['self_token'])
     except Exception:
-        var['self_token'] = None
-        var['charts'] = []
+        pass
     context = {
         'page': page,
         'template': templates.get(page.split('-')[0], 'panel_profile.html'),
@@ -59,6 +61,18 @@ def panel(request):
     if not request.user.is_authenticated:
         return logout_user(request)
 
-    # return chart_view(r, context)
-
     return render(request, 'panel.html', context)
+
+@csrf_exempt
+def get_chart(request):
+    token = get_portfolio_from_id(request.user, request.GET.get('id'))['token']
+    figi = request.GET.get('figi')
+
+    if not token or not figi:
+        return JsonResponse({'error': 'Missing parameters'}, status=400)
+
+    try:
+        chart = chart_view(token, figi)
+        return JsonResponse(chart)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

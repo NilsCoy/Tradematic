@@ -5,37 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="e3eddfc0-f9d6-49dd-90ca-4617401a3382" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/PythonProject.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/main/models/lstm_model_hourly_v2.keras" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/LostLogic.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/about_image.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/auth.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/discord.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/graphic.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/icon1.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/icon2.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/icon3.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/icon4.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/panel.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/point.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/profile.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/reset.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/site_logo.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/telegram.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/assets/vk.svg" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/css/panel-styles.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/css/styles.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/invest/static/js/javascript.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/invest/db.sqlite3" beforeDir="false" afterPath="$PROJECT_DIR$/invest/db.sqlite3" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/invest/main/models/lstm_model_hourly.keras" beforeDir="false" afterPath="$PROJECT_DIR$/invest/main/models/lstm_model_hourly_v1.keras" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/invest/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/invest/invest/settings.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/invest/urls.py" beforeDir="false" afterPath="$PROJECT_DIR$/invest/invest/urls.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/api.py" beforeDir="false" afterPath="$PROJECT_DIR$/invest/main/scripts/api.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/invest/main/scripts/datasets/stock_data.csv" beforeDir="false" afterPath="$PROJECT_DIR$/invest/main/scripts/datasets/stock_data.csv" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/invest/main/scripts/model.py" beforeDir="false" afterPath="$PROJECT_DIR$/invest/main/scripts/model.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/invest/main/scripts/porfolio.py" beforeDir="false" afterPath="$PROJECT_DIR$/invest/main/scripts/porfolio.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/invest/uv.lock" beforeDir="false" afterPath="$PROJECT_DIR$/invest/uv.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/invest/main/views.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/templates/panel.html" beforeDir="false" afterPath="$PROJECT_DIR$/invest/templates/panel.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/templates/panel_portfolio_token.html" beforeDir="false" afterPath="$PROJECT_DIR$/invest/templates/panel_portfolio_token.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

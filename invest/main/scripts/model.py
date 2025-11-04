@@ -33,7 +33,7 @@ def prepare_data(candles, time_steps=10):
 
 def prepare_data_from_array(prices, time_steps=10):
     scaler = MinMaxScaler(feature_range=(0, 1))
-    prices_scaled = scaler.fit_transform(prices.reshape(-1, 1))
+    prices_scaled = scaler.fit_transform(np.array(prices).reshape(-1, 1))
 
     X, y = [], []
     for i in range(len(prices_scaled) - time_steps):
@@ -44,25 +44,21 @@ def prepare_data_from_array(prices, time_steps=10):
 
 
 def predict_data_from_candle(data, model, len_input=24):
-    offset = get_offset(data, model)
     prices = np.array([float(candle.close.units) + candle.close.nano / 1e9 for candle in data[-(len_input + 1) : -1]])
     scaler = MinMaxScaler(feature_range=(0, 1))
     prices_scaled = scaler.fit_transform(prices.reshape(-1, 1))
-    future_pred = model.predict(prices_scaled.reshape(1, len_input, 1))
+    future_pred = model.predict(prices_scaled.reshape(1, len_input, 1), verbose=0)
     future_price = scaler.inverse_transform(future_pred.reshape(-1, 1))
-    predictions = future_price[0][0] + offset
-    return predictions
+    return future_price[0][0]
 
 
 def predict_data_from_array(data, model, len_input=24):
-    offset = get_offset(data, model)
     prices = np.array([candle for candle in data[-len_input:]])
     scaler = MinMaxScaler(feature_range=(0, 1))
     prices_scaled = scaler.fit_transform(prices.reshape(-1, 1))
-    future_pred = model.predict(prices_scaled.reshape(1, len_input, 1))
+    future_pred = model.predict(prices_scaled.reshape(1, len_input, 1), verbose=0)
     future_price = scaler.inverse_transform(future_pred.reshape(-1, 1))
-    predictions = future_price[0][0] + offset
-    return predictions
+    return future_price[0][0]
 
 
 def get_offset(data, model, len_input=24*30*6):
@@ -70,9 +66,19 @@ def get_offset(data, model, len_input=24*30*6):
 
     X, y, scaler = prepare_data_from_array(prices)
 
-    predictions = model.predict(X)
+    predictions = model.predict(X, verbose=0)
     predictions = scaler.inverse_transform(predictions)  # Обратное масштабирование
     y = scaler.inverse_transform(y)
 
     offset = np.mean(y) - np.mean(predictions)
     return offset
+
+def get_slice_data(data, window=24, slice=30):
+    data = data[-slice*window:]
+    new_data = [float(np.mean(data[i:i+window])) for i in range(len(data)-window)]
+    return new_data
+
+def get_unique_slice_data(data, window=24, slice=30):
+    data = data[-slice*window:]
+    new_data = [float(np.mean(data[i*window:i*window+window])) for i in range(len(data)//window)]
+    return new_data

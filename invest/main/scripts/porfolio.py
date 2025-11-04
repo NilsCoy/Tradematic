@@ -8,11 +8,11 @@ from main.scripts.api import (
     get_account,
     get_client,
     get_elements_in_portfolio,
-    get_hourly_data,
+    get_daily_data,
     get_name_stock,
     save_to_csv,
 )
-from main.scripts.model import predict_data_from_array, preload_model
+from main.scripts.model import predict_data_from_array, preload_model, get_offset, get_slice_data, get_unique_slice_data
 
 from main.models import UserTokens
 
@@ -74,26 +74,31 @@ def get_portfolio(username):
 
 def chart_view(token, figi):
     with get_client(token) as client:
-        data = get_hourly_data(client, figi, hours=24 * 3)
+        data = get_daily_data(client, figi, days=365*4)
         save_to_csv(data, 'main/scripts/datasets/stock_data.csv')
 
     df = pd.read_csv('main/scripts/datasets/stock_data.csv', encoding='CP1251')
+    df = df.sort_values('Дата')
     data = df['Цена'].tolist()
     labels = df['Дата'].tolist()
-    labels = [x.split('+')[0] for x in labels]
-    labels.append(str(datetime.now() + timedelta(hours=1)).split('.')[0])
-    labels.append(str(datetime.now() + timedelta(hours=2)).split('.')[0])
-    labels.append(str(datetime.now() + timedelta(hours=3)).split('.')[0])
+    labels = [x.split('+')[0].split(' ')[0] for x in labels[-60:]]
 
     model = preload_model('lstm_model_hourly_v2.keras')
-    predicted_data = data.copy()
-    predicted_data.append(float(predict_data_from_array(data, model, 30)))
-    predicted_data.append(float(predict_data_from_array(predicted_data, model, 30)))
-    predicted_data.append(float(predict_data_from_array(predicted_data, model, 30)))
+
+    predicted_data = data[-60:].copy()
+
+    predicted_data.append(float(predict_data_from_array(data, model, 30) + get_offset(data[-30:], model)))
+    labels.append(str(datetime.fromisoformat(labels[-1]) + timedelta(days=1)).split('.')[0].split(' ')[0])
+
+    for i in range(1, 29):
+        days_data = get_slice_data(data, i+1, 30)
+        predicted_data.append(float(predict_data_from_array(days_data, model, 30) + get_offset(days_data[-30:], model)))
+        labels.append(str(datetime.fromisoformat(labels[-1]) + timedelta(days=1)).split('.')[0].split(' ')[0])
+        # print(i)
 
     chart = {
         'labels': json.dumps(labels),
-        'data': json.dumps(data),
+        'data': json.dumps(data[-60:]),
         'predict_data': predicted_data,
         'title': get_name_stock(token, figi),
         'chart_type': 'line',  # Может быть 'bar', 'pie', 'doughnut' и т.д.
@@ -111,3 +116,8 @@ def get_charts(username, profile_id):
                 if stock['instrument_type'] != 'currency':
                     charts.append(chart_view(i['token'], stock['figi']))
     return charts
+
+def get_portfolio_from_id(username, token_id):
+    for i in get_portfolio(username):
+        if str(i['id']) in str(token_id):
+            return i

@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.urls import path
 
 from main.scripts.auth import check_auth
-from main.views import about_page, blog_page, index_page, panel
+from main.views import about_page, blog_page, index_page, panel, get_chart
 
 
 urlpatterns = [
@@ -14,6 +14,7 @@ urlpatterns = [
     path('panel/', panel, name='panel'),
     path('api/check_auth/', check_auth, name='check_auth'),
     path('', index_page, name='index_page'),
+    path('get_chart/', get_chart, name='get_chart'),
     # path('logout/', logout_user, name='logout_user'),
 ]
 

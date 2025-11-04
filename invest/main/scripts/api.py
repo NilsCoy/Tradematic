@@ -10,14 +10,13 @@ from tqdm import tqdm
 
 
 # Инициализация клиента
-@contextmanager
 def get_client(token):
     """Получает клинета по токену"""
-    client = ti.Client(token)
-    try:
-        yield client
-    except grpc.RpcError as e:
-        print(f'Ошибка получения данных: {e.details()}')
+    with ti.Client(token) as client:
+        try:
+            return ti.Client(token)
+        except grpc.RpcError as e:
+            print(f"Ошибка получения данных: {e.details()}")
 
 
 # Получение исторических данных
@@ -145,6 +144,7 @@ def get_elements_in_portfolio(token):
             if current_price:
                 cur_price = current_price.units + current_price.nano / 1e9
 
+            item['name'] = get_name_stock(token, figi)
             item['figi'] = figi
             item['quantity'] = quantity
             item['avg_price'] = avg_price

@@ -1,76 +1,118 @@
 <html>
 
 <script>
-{% for chart in var.charts %}
-document.addEventListener('DOMContentLoaded', function() {
-// Инициализация каждого графика
-new Chart(document.getElementById('chart-{{ forloop.counter }}'), {
-    type: '{{ chart.chart_type|default:"line" }}',
-            data: {
-                labels: {{ chart.labels|safe }},
-                datasets: [
-                    {
-                        label: 'Реальная цена акции',
-                        data: {{ chart.data|safe }},
-                        borderWidth: 1,
-                        borderColor: 'rgb(189, 238, 229)',
-                        tension: 0.1
-                    },
-                    {
-                        label: 'Предсказанная цена акции',
-                        data: {{ chart.predict_data|safe }},
-                        borderWidth: 1,
-                        borderColor: 'rgb(31,164,135)',
-                        tension: 0.1
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: false
-                    },
-                    x: {
-                        ticks: {
-                        maxRotation: 45,
-                        minRotation: 45
-                        }
-                    }
-                },
-                plugins: {
-                    zoom: {
-                        zoom: {
-                            wheel: {
-                                enabled: true, // включить масштабирование колесиком мыши
-                            },
-                            pinch: {
-                                enabled: true // включить масштабирование на тач-устройствах
-                            },
-                            mode: 'x', // разрешить масштабирование по обеим осям
-                            limits: {
-                                x: {min: 'original', max: 'original'}
-                            }
-                        },
-                        pan: {
-                            enabled: true, // включить перемещение
-                            mode: 'x', // разрешить перемещение по обеим осям
-                        }
-                    }
+    document.addEventListener('DOMContentLoaded', function() {
+        const buttons = document.querySelectorAll('.load-chart-btn');
+
+        buttons.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const id = this.dataset.id;
+                const figi = this.dataset.figi;
+                const chartId = this.dataset.chart;
+                const canvas = document.getElementById(chartId);
+
+                // если график уже загружен — не грузим заново
+                if (canvas.dataset.loaded === "true") {
+                    return;
                 }
-            }
-});
-});
-{% endfor %}
+
+                this.textContent = "Загрузка...";
+
+                fetch(`/get_chart/?id=${id}&figi=${figi}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.error) {
+                            alert("Ошибка: " + data.error);
+                            this.textContent = "Ошибка";
+                            return;
+                        }
+
+                        new Chart(canvas, {
+                            type: data.chart_type || 'line',
+                            data: {
+                                labels: JSON.parse(data.labels),
+                                datasets: [
+                                    {
+                                        label: 'Реальная цена акции',
+                                        data: JSON.parse(data.data),
+                                        borderColor: 'rgb(31,164,135)',
+                                        borderWidth: 2,
+                                        tension: 0.1
+                                    },
+                                    {
+                                        label: 'Предсказанная цена акции',
+                                        data: data.predict_data,
+                                        borderColor: 'rgb(189, 238, 229)',
+                                        borderWidth: 2,
+                                        tension: 0.3,
+                                        borderDash: [5, 5]
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                scales: {
+                                    y: {
+                                        beginAtZero: false
+                                    },
+                                    x: {
+                                        ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45
+                                        }
+                                    }
+                                },
+                                plugins: {
+                                    zoom: {
+                                        zoom: {
+                                            wheel: {
+                                                enabled: true, // включить масштабирование колесиком мыши
+                                            },
+                                            pinch: {
+                                                enabled: true // включить масштабирование на тач-устройствах
+                                            },
+                                            mode: 'x', // разрешить масштабирование по обеим осям
+                                            limits: {
+                                                x: {min: 'original', max: 'original'}
+                                            }
+                                        },
+                                        pan: {
+                                            enabled: true, // включить перемещение
+                                            mode: 'x', // разрешить перемещение по обеим осям
+                                        }
+                                    }
+                                }
+                            }
+                        });
+
+                        canvas.dataset.loaded = "true";
+                        this.textContent = "График загружен";
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        alert("Ошибка загрузки графика");
+                        this.textContent = "Ошибка";
+                    });
+            });
+        });
+    });
 </script>
 
 
 <div class="portfolio">
-    {% for chart in var.charts %}
-    <div class="chart-container">
-        <h3><span class="gradient">{{ chart.title }} (последние 30 часов)</span></h3>
-        <canvas id="chart-{{ forloop.counter }}" width="800" height="400"></canvas>
-    </div>
+    <h2>Ваш портфель: <span class="gradient">"{{ var.portfolio.name }}"</span></h2>
+    {% for stock in var.portfolio.stocks %}
+        <div class="chart-container">
+            <h3><span class="gradient">{{ stock.name }}</span></h3>
+            <button class="load-chart-btn"
+                    data-id="{{ var.portfolio.id }}"
+                    data-figi="{{ stock.figi }}"
+                    data-chart="chart-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">
+                Показать график
+            </button>
+            <canvas id="chart-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" width="600" height="300"></canvas>
+    <!--        <canvas id="chart-{{ forloop.counter }}" width="800" height="400"></canvas>-->
+        </div>
     {% endfor %}
 </div>
 
