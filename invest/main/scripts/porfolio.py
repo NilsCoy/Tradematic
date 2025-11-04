@@ -85,7 +85,7 @@ def chart_view(token, figi):
     labels.append(str(datetime.now() + timedelta(hours=2)).split('.')[0])
     labels.append(str(datetime.now() + timedelta(hours=3)).split('.')[0])
 
-    model = preload_model('lstm_model_hourly.keras')
+    model = preload_model('lstm_model_hourly_v2.keras')
     predicted_data = data.copy()
     predicted_data.append(float(predict_data_from_array(data, model, 30)))
     predicted_data.append(float(predict_data_from_array(predicted_data, model, 30)))

@@ -31,20 +31,48 @@ def prepare_data(candles, time_steps=10):
 
     return np.array(X), np.array(y), scaler
 
+def prepare_data_from_array(prices, time_steps=10):
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    prices_scaled = scaler.fit_transform(prices.reshape(-1, 1))
+
+    X, y = [], []
+    for i in range(len(prices_scaled) - time_steps):
+        X.append(prices_scaled[i : i + time_steps])
+        y.append(prices_scaled[i + time_steps])
+
+    return np.array(X), np.array(y), scaler
+
 
 def predict_data_from_candle(data, model, len_input=24):
+    offset = get_offset(data, model)
     prices = np.array([float(candle.close.units) + candle.close.nano / 1e9 for candle in data[-(len_input + 1) : -1]])
     scaler = MinMaxScaler(feature_range=(0, 1))
     prices_scaled = scaler.fit_transform(prices.reshape(-1, 1))
     future_pred = model.predict(prices_scaled.reshape(1, len_input, 1))
     future_price = scaler.inverse_transform(future_pred.reshape(-1, 1))
-    return future_price[0][0]
+    predictions = future_price[0][0] + offset
+    return predictions
 
 
 def predict_data_from_array(data, model, len_input=24):
+    offset = get_offset(data, model)
     prices = np.array([candle for candle in data[-len_input:]])
     scaler = MinMaxScaler(feature_range=(0, 1))
     prices_scaled = scaler.fit_transform(prices.reshape(-1, 1))
     future_pred = model.predict(prices_scaled.reshape(1, len_input, 1))
     future_price = scaler.inverse_transform(future_pred.reshape(-1, 1))
-    return future_price[0][0]
+    predictions = future_price[0][0] + offset
+    return predictions
+
+
+def get_offset(data, model, len_input=24*30*6):
+    prices = np.array([candle for candle in data[-len_input:]])
+
+    X, y, scaler = prepare_data_from_array(prices)
+
+    predictions = model.predict(X)
+    predictions = scaler.inverse_transform(predictions)  # Обратное масштабирование
+    y = scaler.inverse_transform(y)
+
+    offset = np.mean(y) - np.mean(predictions)
+    return offset
