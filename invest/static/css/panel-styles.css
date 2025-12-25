@@ -234,6 +234,20 @@ h1 {
 
 .chart-container canvas {
   margin-bottom: 20px;
+  display: none;
+}
+.chart-container button {
+  width: 270px;
+  height: 38px;
+  border-radius: 5px;
+  margin-top: 5px;
+  margin-bottom: 20px;
+  color: white;
+  border-style: none;
+  color: #1F1F1F;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 400;
 }
 
 @media (max-width: 1310px) {

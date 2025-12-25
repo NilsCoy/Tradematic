@@ -26,6 +26,8 @@
                             this.textContent = "Ошибка";
                             return;
                         }
+                        canvas.style.display = 'block';
+                        canvas.style.buttons = 'none';
 
                         new Chart(canvas, {
                             type: data.chart_type || 'line',
