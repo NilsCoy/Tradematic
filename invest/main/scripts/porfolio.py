@@ -95,7 +95,6 @@ def chart_view(token, figi):
         days_data = get_slice_data(data, i+1, 30)
         predicted_data.append(float(predict_data_from_array(days_data, model, 30) + get_offset(days_data[-30:], model)))
         labels.append(str(datetime.fromisoformat(labels[-1]) + timedelta(days=1)).split('.')[0].split(' ')[0])
-        # print(i)
 
     chart = {
         'labels': json.dumps(labels),
