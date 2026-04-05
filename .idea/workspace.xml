@@ -4,11 +4,75 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e3eddfc0-f9d6-49dd-90ca-4617401a3382" name="Changes" comment="Add css in load predict data">
+    <list default="true" id="e3eddfc0-f9d6-49dd-90ca-4617401a3382" name="Changes" comment="Fix button">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/PythonProject.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/PythonProject.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/invest/main/scripts/datasets/stock_data.csv" beforeDir="false" afterPath="$PROJECT_DIR$/invest/main/scripts/datasets/stock_data.csv" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/invest/main/scripts/porfolio.py" beforeDir="false" afterPath="$PROJECT_DIR$/invest/main/scripts/porfolio.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/invest/templates/panel_portfolio_token.html" beforeDir="false" afterPath="$PROJECT_DIR$/invest/templates/panel_portfolio_token.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/Makefile" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/db.sqlite3" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/invest/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/invest/asgi.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/invest/settings.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/invest/urls.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/invest/wsgi.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/admin.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/apps.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/migrations/0001_initial.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/migrations/0002_alter_usertokens_unique_together.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/migrations/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/models.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/models/lstm_model_hourly_v1.keras" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/models/lstm_model_hourly_v2.keras" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/models/lstm_model_v1.keras" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/api.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/auth.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/datasets/daily_data.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/datasets/hourly_data.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/datasets/monthly_data.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/datasets/stock_data.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/datasets/weekly_data.csv" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/model.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/porfolio.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/scripts/test.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/main/views.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/manage.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/pyproject.toml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/LostLogic.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/about_image.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/auth.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/discord.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/graphic.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/icon.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/icon1.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/icon2.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/icon3.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/icon4.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/panel.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/point.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/profile.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/reset.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/site_logo.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/telegram.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/assets/vk.svg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/css/panel-styles.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/css/styles.css" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/static/js/javascript.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/templates/about.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/templates/blog.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/templates/index.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/templates/panel.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/templates/panel_portfolio.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/templates/panel_portfolio_token.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/templates/panel_profile.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/invest/uv.lock" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/other/name_project.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/other/Разработка веб-платформы для прогнозирования инвестирований с использованием искусственного интеллекта.pptx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/other/Разработка_веб_платформы_для_прогнозирования_инвестирований_с_использованием (1).docx" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -77,20 +141,21 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;DefaultHtmlFileTemplate&quot;: &quot;HTML File&quot;,
-    &quot;Makefile Target.install.executor&quot;: &quot;Run&quot;,
-    &quot;Makefile Target.run.executor&quot;: &quot;Run&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python.porfolio.executor&quot;: &quot;Run&quot;,
-    &quot;Python.test.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;rnn&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "DefaultHtmlFileTemplate": "HTML File",
+    "Makefile Target.install.executor": "Run",
+    "Makefile Target.run.executor": "Run",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.porfolio.executor": "Run",
+    "Python.test.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "rnn",
+    "ignore.virus.scanning.warn.message": "true",
+    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\user\PycharmProjects\PythonProject\invest" />
@@ -189,7 +254,15 @@
       <option name="project" value="LOCAL" />
       <updated>1766661883220</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Fix button">
+      <option name="closed" value="true" />
+      <created>1766662151963</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1766662151963</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -205,6 +278,7 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Add css in load predict data" />
-    <option name="LAST_COMMIT_MESSAGE" value="Add css in load predict data" />
+    <MESSAGE value="Fix button" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fix button" />
   </component>
 </project>
