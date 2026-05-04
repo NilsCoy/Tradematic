@@ -16,6 +16,7 @@ dependencies = [
     "tensorflow-io-gcs-filesystem==0.31.0",
     "tinkoff-investments>=0.2.0b117",
     "tqdm>=4.67.1",
+    "cryptography>=47.0.0",
 ]
 
 [dependency-groups]
