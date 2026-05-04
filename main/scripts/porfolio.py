@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timedelta
 
 import pandas as pd
+from cryptography.fernet import Fernet
+from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import redirect
 from main.scripts.api import (
@@ -11,23 +13,32 @@ from main.scripts.api import (
     get_daily_data,
     get_name_stock,
     save_to_csv,
+    calculate_metrics,
+    decrypt_token,
 )
 from main.scripts.model import predict_data_from_array, preload_model, get_offset, get_slice_data, get_unique_slice_data
 
 from main.models import UserTokens
 
-
 def add_portfolio(request):
     username = request.user
     token = request.POST['Token']
+
     if not token:
         messages.error(request, 'Неверный токен!')
-    else:
-        _, created = UserTokens.objects.get_or_create(
-            username=username, token=token, defaults={'username': username, 'token': token}
-        )
-        if not created:
-            messages.error(request, 'Токен уже добавлен!')
+        return redirect('panel')
+
+    cipher = Fernet(settings.SECRET_ENCRYPTION_KEY)
+    encrypted_token = cipher.encrypt(token.encode()).decode()
+
+    _, created = UserTokens.objects.get_or_create(
+        username=username,
+        token=encrypted_token,
+    )
+
+    if not created:
+        messages.error(request, 'Токен уже добавлен!')
+
     return redirect('panel')
 
 
@@ -46,6 +57,7 @@ def get_portfolio(username):
     content = []
 
     for token in tokens:
+        token = decrypt_token(token)
         account = get_account(token)
 
         portfolio = {}
@@ -57,6 +69,8 @@ def get_portfolio(username):
         portfolio['status'] = account.accounts[0].name
 
         portfolio['stocks'] = get_elements_in_portfolio(token)
+        # print(portfolio['stocks'])
+        # portfolio['metrics'] = calculate_metrics(token)
 
         total_cost = 0
         total_stocks = 0
@@ -106,18 +120,46 @@ def chart_view(token, figi):
 
     return chart
 
+def get_portfolio_from_id(username, token_id):
+    for portfolio in get_portfolio(username):
+        if str(portfolio['id']) in str(token_id):
+            return portfolio
 
 def get_charts(username, profile_id):
-    portfolio = get_portfolio(username)
+    portfolio = get_portfolio_from_id(username, profile_id)
     charts = []
-    for i in portfolio:
-        if str(i['id']) in str(profile_id):
-            for stock in i['stocks']:
-                if stock['instrument_type'] != 'currency':
-                    charts.append(chart_view(i['token'], stock['figi']))
+    for stock in portfolio['stocks']:
+        print(stock['instrument_type'])
+        if stock['instrument_type'] != 'currency':
+            charts.append(chart_view(portfolio['token'], stock['figi']))
     return charts
 
-def get_portfolio_from_id(username, token_id):
-    for i in get_portfolio(username):
-        if str(i['id']) in str(token_id):
-            return i
+
+
+def get_portfolio_summary(portfolio):
+    metrics = [item['metrics'] for item in portfolio['stocks']]
+
+    total_invested = sum(m["invested"] for m in metrics)
+    total_value = sum(m["current_value"] for m in metrics)
+    total_profit = total_value - total_invested
+
+    total_yield = (total_profit / total_invested * 100) if total_invested else 0
+    avg_yield = sum(m["yield_pct"] for m in metrics) / len(metrics)
+
+    best = max(metrics, key=lambda x: x["yield_pct"])
+    worst = min(metrics, key=lambda x: x["yield_pct"])
+    best_name = ''
+    worst_name = ''
+    for i in portfolio['stocks']:
+        if i['figi'] == best['figi']: best_name = i['name']
+        if i['figi'] == worst['figi']: worst_name = i['name']
+
+    return {
+        "total_invested": round(total_invested, 2),
+        "total_value": round(total_value, 2),
+        "total_profit": round(total_profit, 2),
+        "total_yield_pct": round(total_yield, 1),
+        "avg_yield_pct": round(avg_yield, 1),
+        "best": best_name,
+        "worst": worst_name
+    }

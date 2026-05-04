@@ -1,7 +1,7 @@
 from django.http.response import HttpResponse
 from django.shortcuts import render
 from main.scripts.auth import login_user, logout_user, register_user, reset_password
-from main.scripts.porfolio import add_portfolio, get_charts, get_portfolio, remove_portfolio, chart_view, get_portfolio_from_id
+from main.scripts.porfolio import add_portfolio, get_charts, get_portfolio, remove_portfolio, chart_view, get_portfolio_from_id, get_portfolio_summary
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
@@ -40,6 +40,7 @@ def panel(request):
         var['self_token'] = page.split('-')[1]
         # var['charts'] = get_charts(request.user, var['self_token'])
         var['portfolio'] = get_portfolio_from_id(request.user, var['self_token'])
+        var['metrics'] = get_portfolio_summary(var['portfolio'])
     except Exception:
         pass
     context = {

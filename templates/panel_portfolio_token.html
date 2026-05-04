@@ -103,6 +103,12 @@
 
 <div class="portfolio">
     <h2>Ваш портфель: <span class="gradient">"{{ var.portfolio.name }}"</span></h2>
+    <p>Инвестировано: <span class="gradient">{{ var.metrics.total_invested }} ₽</span> ({{ var.metrics.total_value }})</p>
+    <p>Прибыль: <span class="gradient">{{ var.metrics.total_profit }} ₽</span></p>
+    <p>Доходность: <span class="gradient">{{ var.metrics.total_yield_pct }} %</span></p>
+    <p>Средняя доходность: <span class="gradient">{{ var.metrics.avg_yield_pct }} %</span></p>
+    <p>Лучший/Худший актив: <span class="gradient">{{ var.metrics.best }}</span> / {{ var.metrics.worst }}</p>
+    <h2>Посмотреть прогноз:</h2>
     {% for stock in var.portfolio.stocks %}
         <div class="chart-container">
             <h3><span class="gradient">{{ stock.name }}</span></h3>

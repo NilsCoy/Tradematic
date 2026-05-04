@@ -1,8 +1,20 @@
 from pathlib import Path
+import os
+from cryptography.fernet import Fernet
+
+def get_or_create_key():
+    key = os.environ.get("SECRET_ENCRYPTION_KEY")
+    if key:
+        return key.encode()
+    new_key = Fernet.generate_key()
+    with open(".env", "a") as f:
+        f.write(f"\nSECRET_ENCRYPTION_KEY={new_key.decode()}\n")
+    return new_key
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure--vg%1#%0t^0hyap7xiem@c*aznq)vttypf6b)@mlssy93*fri%'
+SECRET_ENCRYPTION_KEY = get_or_create_key()
 
 DEBUG = True
 
