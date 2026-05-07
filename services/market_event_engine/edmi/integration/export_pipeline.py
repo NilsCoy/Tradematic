@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import csv
 import json
-import re
 from pathlib import Path
 
 from edmi.application.factory import make_pipeline
@@ -17,6 +16,8 @@ from edmi.infrastructure.dedup import text_hash
 from edmi.services.embedding import EmbeddingService
 from edmi.services.vector import cosine_similarity
 
+
+MARKET_ASSET = "MARKET"
 
 FIELDNAMES = (
     "event_id",
@@ -48,8 +49,6 @@ STATE_FIELDNAMES = (
     "url",
     "published_at",
 )
-LATIN_RE = re.compile(r"[A-Z]")
-CYRILLIC_RE = re.compile(r"[А-Яа-я]")
 
 
 async def export_processed_events(
@@ -121,7 +120,7 @@ async def export_processed_events(
 
 def _event_rows(event: ProcessedEvent, assets: list[str]) -> list[dict]:
     rows = []
-    normalized_assets = [asset.upper() for asset in assets] or _infer_assets(event)
+    normalized_assets = _normalize_assets(assets) or [MARKET_ASSET]
     for asset in normalized_assets:
         relation = event.asset_relations.get(asset)
         effect = event.market_effects.get(asset)
@@ -151,33 +150,13 @@ def _event_rows(event: ProcessedEvent, assets: list[str]) -> list[dict]:
     return rows
 
 
-def _infer_assets(event: ProcessedEvent) -> list[str]:
-    inferred = [
-        *(_clean_company_asset(company) for company in event.entities.companies),
-        *event.entities.commodities,
-        *event.entities.macro,
-    ]
+def _normalize_assets(assets: list[str]) -> list[str]:
     normalized = []
-    for asset in inferred:
-        clean = " ".join(asset.strip().split())
+    for asset in assets:
+        clean = " ".join(asset.strip().split()).upper()
         if clean:
-            normalized.append(clean.upper())
-    return list(dict.fromkeys(normalized)) or ["MARKET"]
-
-
-def _clean_company_asset(company: str) -> str:
-    clean = " ".join(company.strip().split())
-    if not clean:
-        return ""
-    upper = clean.upper()
-    words = upper.split()
-    if len(words) > 3 or len(upper) > 40:
-        return ""
-    if CYRILLIC_RE.search(upper):
-        return ""
-    if not LATIN_RE.search(upper):
-        return ""
-    return upper
+            normalized.append(clean)
+    return list(dict.fromkeys(normalized))
 
 
 def _summary(

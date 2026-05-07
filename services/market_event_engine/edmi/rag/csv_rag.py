@@ -28,6 +28,26 @@ INDEX_FIELDS = (
 )
 
 DEFAULT_ANALYST_MODEL = "tradematic-analyst"
+MARKET_ASSET = "MARKET"
+SOURCE_LIKE_ASSETS = {
+    "AP",
+    "AP PHOTO",
+    "APPSTORE",
+    "BBC",
+    "BLOOMBERG",
+    "CNBC",
+    "DW",
+    "EURONEWS",
+    "FORBES",
+    "GUARDIAN",
+    "LENTA.RU",
+    "REUTERS",
+    "RIA",
+    "RIA.RU",
+    "RT",
+    "SPUTNIK",
+    "ТАСС",
+}
 DEFAULT_SYSTEM_PROMPT = """
 Ты аналитик Tradematic. Отвечай только на основе переданного RAG-контекста из новостей,
 обработанных EDMI. Для каждого актива дай краткий вывод: ключевые события, направление
@@ -141,10 +161,10 @@ async def analyze_assets(
     top_k: int = 8,
 ) -> dict:
     rows = _read_index(index_csv)
-    available_assets = sorted({row.get("asset", "") for row in rows if row.get("asset", "")})
+    available_assets = _available_assets(rows)
     target_assets = assets or available_assets
     if not target_assets:
-        raise ValueError("No assets found in RAG index and no --asset arguments were provided")
+        target_assets = [MARKET_ASSET]
 
     settings = get_settings()
     base_url = (ollama_url or settings.ollama_url).rstrip("/")
@@ -238,6 +258,27 @@ def _read_index(index_csv: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(file))
 
 
+def _available_assets(rows: list[dict[str, str]]) -> list[str]:
+    assets = []
+    for row in rows:
+        asset = row.get("asset", "").strip().upper()
+        if asset and not _is_noise_asset(asset):
+            assets.append(asset)
+    return sorted(dict.fromkeys(assets))
+
+
+def _is_noise_asset(asset: str) -> bool:
+    if asset == MARKET_ASSET:
+        return False
+    if asset in SOURCE_LIKE_ASSETS:
+        return True
+    if "." in asset:
+        return True
+    if len(asset.split()) > 2:
+        return True
+    return False
+
+
 def _top_asset_rows(rows: list[dict[str, str]], asset: str, top_k: int) -> list[dict[str, str]]:
     exact = [row for row in rows if row.get("asset", "").upper() == asset.upper()]
     selected = exact or rows
@@ -267,7 +308,7 @@ def _analysis_prompt(asset: str, rows: list[dict[str, str]]) -> str:
 RAG-контекст:
 {context}
 
-Сделай анализ по активу на русском языке:
+Сделай анализ на русском языке: оцени влияние всего новостного фона из RAG-контекста на указанный актив.
 1. Ключевые новости и события.
 2. Вероятное влияние на цену.
 3. Уверенность и ограничения данных.

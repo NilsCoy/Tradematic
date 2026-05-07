@@ -22,10 +22,12 @@ RAG_TRAINING_JSONL := $(DATASETS_DIR)/rag_training.jsonl
 OLLAMA_MODELFILE := $(DATASETS_DIR)/Modelfile.$(OLLAMA_ANALYST_MODEL)
 ASSET_ANALYSIS_JSON := $(DATASETS_DIR)/asset_analysis.json
 ASSET_ANALYSIS_MD := $(DATASETS_DIR)/asset_analysis.md
+DEFAULT_ASSETS_FILE := $(DATASETS_DIR)/assets.txt
+EFFECTIVE_ASSETS_FILE := $(if $(ASSETS_FILE),$(ASSETS_FILE),$(if $(wildcard $(DEFAULT_ASSETS_FILE)),$(DEFAULT_ASSETS_FILE),))
 
 EDMI_ENV := EDMI_TRADEMATIC_DATASETS_DIR=$(abspath $(DATASETS_DIR)) EDMI_EMBEDDING_LOCAL_FILES_ONLY=true
 ASSET_FLAGS = $(foreach asset,$(ASSETS),--asset $(asset))
-ASSET_ARGS = $(if $(ASSETS_FILE),--assets-file $(abspath $(ASSETS_FILE)),$(if $(ASSETS),$(ASSET_FLAGS),))
+ASSET_ARGS = $(if $(EFFECTIVE_ASSETS_FILE),--assets-file $(abspath $(EFFECTIVE_ASSETS_FILE)),$(if $(ASSETS),$(ASSET_FLAGS),))
 
 .PHONY: help install run migrate makemigrations shell collect-static superuser test format lint uv-lock uv-update \
 	ollama-check install-services collect-news process-news process-news-scheduled build-rag ollama-model analyze-assets rag-query \
@@ -107,7 +109,6 @@ process-news:
 	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-export-events \
 		--input $(abspath $(NEWS_CSV)) \
 		--output $(abspath $(PROCESSED_CSV)) \
-		$(ASSET_ARGS) \
 		--limit $(LIMIT)
 
 process-news-scheduled:
@@ -115,7 +116,6 @@ process-news-scheduled:
 	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-export-events \
 		--input $(abspath $(NEWS_CSV)) \
 		--output $(abspath $(PROCESSED_CSV)) \
-		$(ASSET_ARGS) \
 		--limit $(LIMIT) \
 		--state-file $(abspath $(DEDUP_STATE_CSV)) \
 		--append
