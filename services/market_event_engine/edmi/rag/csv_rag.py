@@ -29,6 +29,44 @@ INDEX_FIELDS = (
 
 DEFAULT_ANALYST_MODEL = "tradematic-analyst"
 MARKET_ASSET = "MARKET"
+BRIEF_CATEGORIES = (
+    {
+        "key": "executive",
+        "title": "Executive overview",
+        "event_types": (),
+        "focus": "общая картина дня, главные драйверы, баланс позитивных и негативных сигналов",
+    },
+    {
+        "key": "macro_economy",
+        "title": "Macro and economy",
+        "event_types": ("macro", "regulation"),
+        "focus": "макроэкономика, ставки, инфляция, регуляторы, бюджетные и валютные риски",
+    },
+    {
+        "key": "geopolitics",
+        "title": "Geopolitics",
+        "event_types": ("geopolitics",),
+        "focus": "геополитика, санкции, международная напряженность и страновые риски",
+    },
+    {
+        "key": "corporate",
+        "title": "Corporate and earnings",
+        "event_types": ("earnings", "product_launch"),
+        "focus": "корпоративные новости, отчетность, продукты, сделки и управленческие решения",
+    },
+    {
+        "key": "commodities_supply_chain",
+        "title": "Commodities and supply chain",
+        "event_types": ("supply_chain",),
+        "focus": "сырье, логистика, производство, поставки, энергия и себестоимость",
+    },
+    {
+        "key": "risk_watch",
+        "title": "Risk watch",
+        "event_types": (),
+        "focus": "ключевые риски, слабые сигналы, противоречия в данных и что аналитику проверить вручную",
+    },
+)
 SOURCE_LIKE_ASSETS = {
     "AP",
     "AP PHOTO",
@@ -214,6 +252,51 @@ async def analyze_assets(
     }
 
 
+async def brief_market(
+    index_csv: Path,
+    output_json: Path,
+    output_md: Path,
+    model: str = DEFAULT_ANALYST_MODEL,
+    ollama_url: str | None = None,
+    top_k: int = 10,
+) -> dict:
+    rows = _latest_rows(_read_index(index_csv))
+    settings = get_settings()
+    base_url = (ollama_url or settings.ollama_url).rstrip("/")
+    output_json.parent.mkdir(parents=True, exist_ok=True)
+    output_md.parent.mkdir(parents=True, exist_ok=True)
+
+    async def run_category(category: dict) -> dict:
+        selected = _category_rows(rows, category["event_types"], top_k)
+        prompt = _brief_prompt(category["title"], category["focus"], selected)
+        answer = await _ollama_generate(base_url, model, prompt)
+        return {
+            "key": category["key"],
+            "title": category["title"],
+            "focus": category["focus"],
+            "model": model,
+            "documents": len(selected),
+            "summary": answer,
+            "sources": _sources(selected),
+        }
+
+    categories = await asyncio.gather(*(run_category(category) for category in BRIEF_CATEGORIES))
+    payload = {
+        "index_csv": str(index_csv),
+        "model": model,
+        "categories": categories,
+    }
+    output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    output_md.write_text(_brief_markdown(categories), encoding="utf-8")
+    return {
+        "index_csv": str(index_csv),
+        "output_json": str(output_json),
+        "output_md": str(output_md),
+        "model": model,
+        "categories": len(categories),
+    }
+
+
 def load_assets(cli_assets: list[str], assets_file: Path | None = None) -> list[str]:
     assets = [asset.strip().upper() for asset in cli_assets if asset.strip()]
     if assets_file is not None:
@@ -256,6 +339,18 @@ def _content(row: dict[str, str]) -> str:
 def _read_index(index_csv: Path) -> list[dict[str, str]]:
     with index_csv.open("r", encoding="utf-8", newline="") as file:
         return list(csv.DictReader(file))
+
+
+def _latest_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    return sorted(rows, key=lambda row: row.get("published_at", ""), reverse=True)
+
+
+def _category_rows(rows: list[dict[str, str]], event_types: tuple[str, ...], top_k: int) -> list[dict[str, str]]:
+    if event_types:
+        selected = [row for row in rows if row.get("event_type", "") in event_types]
+        if selected:
+            return selected[:top_k]
+    return rows[:top_k]
 
 
 def _available_assets(rows: list[dict[str, str]]) -> list[str]:
@@ -316,6 +411,41 @@ RAG-контекст:
 """.strip()
 
 
+def _brief_prompt(title: str, focus: str, rows: list[dict[str, str]]) -> str:
+    context_blocks = []
+    for index, row in enumerate(rows, start=1):
+        context_blocks.append(
+            "\n".join(
+                [
+                    f"[{index}] {row.get('title', '')}",
+                    f"source={row.get('source', '')}",
+                    f"url={row.get('url', '')}",
+                    f"published_at={row.get('published_at', '')}",
+                    f"event_type={row.get('event_type', '')}",
+                    row.get("content", "")[:2200],
+                ]
+            )
+        )
+    context = "\n\n---\n\n".join(context_blocks) or "Нет найденных документов."
+    return f"""
+Ты старший экономический аналитик Tradematic. Отвечай только на основе RAG-контекста.
+
+Категория: {title}
+Фокус анализа: {focus}
+
+RAG-контекст:
+{context}
+
+Сформируй сводку на русском языке для человека-аналитика:
+1. Ключевые события и сигналы.
+2. Экономический смысл и возможные рыночные последствия.
+3. Риски, неопределенность и противоречия.
+4. Что нужно проверить вручную.
+
+Не выдумывай факты вне контекста. Если данных мало, прямо скажи об этом.
+""".strip()
+
+
 async def _ollama_generate(base_url: str, model: str, prompt: str) -> str:
     async with httpx.AsyncClient(timeout=180.0) as client:
         response = await client.post(
@@ -347,6 +477,39 @@ def _analysis_markdown(analyses: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _sources(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [
+        {
+            "title": row.get("title", ""),
+            "source": row.get("source", ""),
+            "url": row.get("url", ""),
+            "published_at": row.get("published_at", ""),
+            "event_type": row.get("event_type", ""),
+        }
+        for row in rows
+    ]
+
+
+def _brief_markdown(categories: list[dict]) -> str:
+    lines = ["# Tradematic Market Brief", ""]
+    for category in categories:
+        lines.extend(
+            [
+                f"## {category['title']}",
+                "",
+                category["summary"].strip(),
+                "",
+                "Sources:",
+            ]
+        )
+        for source in category["sources"]:
+            title = source.get("title") or "Untitled"
+            url = source.get("url") or ""
+            lines.append(f"- {title} ({source.get('source', '')}) {url}".rstrip())
+        lines.append("")
+    return "\n".join(lines)
+
+
 async def _build(args: argparse.Namespace) -> None:
     summary = await build_index(
         Path(args.input),
@@ -366,6 +529,18 @@ async def _analyze(args: argparse.Namespace) -> None:
     result = await analyze_assets(
         Path(args.index),
         assets,
+        Path(args.output_json),
+        Path(args.output_md),
+        args.model,
+        args.ollama_url,
+        args.top_k,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+async def _brief(args: argparse.Namespace) -> None:
+    result = await brief_market(
+        Path(args.index),
         Path(args.output_json),
         Path(args.output_md),
         args.model,
@@ -413,3 +588,15 @@ def analyze_main() -> None:
     parser.add_argument("--output-md", required=True)
     args = parser.parse_args()
     asyncio.run(_analyze(args))
+
+
+def brief_main() -> None:
+    parser = argparse.ArgumentParser(description="Generate categorized market brief with Ollama")
+    parser.add_argument("--index", required=True)
+    parser.add_argument("--model", default=DEFAULT_ANALYST_MODEL)
+    parser.add_argument("--ollama-url")
+    parser.add_argument("--top-k", type=int, default=10)
+    parser.add_argument("--output-json", required=True)
+    parser.add_argument("--output-md", required=True)
+    args = parser.parse_args()
+    asyncio.run(_brief(args))

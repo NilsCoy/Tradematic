@@ -47,6 +47,8 @@ news_aggregator collect
   -> Ollama model wrapper tradematic-analyst
   -> main/scripts/datasets/asset_analysis.json
   -> main/scripts/datasets/asset_analysis.md
+  -> main/scripts/datasets/market_brief.json
+  -> main/scripts/datasets/market_brief.md
 ```
 
 `rag_training.jsonl` - это выгрузка обучающих примеров из CSV. Локальная Ollama не дообучает веса модели этим файлом напрямую, поэтому рабочая реализация сделана как RAG: новости индексируются, релевантный контекст подается в локальную модель `tradematic-analyst`, а результат сохраняется как анализ по каждому активу.
@@ -66,6 +68,8 @@ news_aggregator collect
 | `main/scripts/datasets/Modelfile.tradematic-analyst` | Modelfile для создания локальной Ollama-обертки `tradematic-analyst` поверх базовой модели, по умолчанию `llama3.1`. |
 | `main/scripts/datasets/asset_analysis.json` | Машиночитаемый итоговый анализ по активам из `ASSETS`, `ASSETS_FILE` или автоматического `main/scripts/datasets/assets.txt`. Каждый актив оценивается по всему новостному фону из RAG. |
 | `main/scripts/datasets/asset_analysis.md` | Человекочитаемый итоговый отчет по активам. Это основной файл, который стоит открывать после завершения pipeline. |
+| `main/scripts/datasets/market_brief.json` | Машиночитаемая сводка всего новостного фона по категориям: общий обзор, макроэкономика, геополитика, корпоративные события, сырье/цепочки поставок и risk watch. Генерируется LLM параллельно с анализом активов. |
+| `main/scripts/datasets/market_brief.md` | Человекочитаемый аналитический brief для ручной проверки новостного фона. Удобно открывать вместе с `asset_analysis.md`. |
 
 Файлы `daily_data.csv`, `hourly_data.csv`, `weekly_data.csv`, `monthly_data.csv` и `stock_data.csv`, если лежат в `main/scripts/datasets`, относятся к рыночным данным Tradematic. Pipeline использует их как источник ценового контекста, но не пересоздает их при сборе новостей.
 
@@ -100,6 +104,7 @@ make pipeline LIMIT=20
 ```
 
 На выходе главный отчет лежит в `main/scripts/datasets/asset_analysis.md`.
+Общая аналитическая сводка по категориям лежит в `main/scripts/datasets/market_brief.md`.
 
 ## Запуск по расписанию
 

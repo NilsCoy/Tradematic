@@ -22,6 +22,8 @@ RAG_TRAINING_JSONL := $(DATASETS_DIR)/rag_training.jsonl
 OLLAMA_MODELFILE := $(DATASETS_DIR)/Modelfile.$(OLLAMA_ANALYST_MODEL)
 ASSET_ANALYSIS_JSON := $(DATASETS_DIR)/asset_analysis.json
 ASSET_ANALYSIS_MD := $(DATASETS_DIR)/asset_analysis.md
+MARKET_BRIEF_JSON := $(DATASETS_DIR)/market_brief.json
+MARKET_BRIEF_MD := $(DATASETS_DIR)/market_brief.md
 DEFAULT_ASSETS_FILE := $(DATASETS_DIR)/assets.txt
 EFFECTIVE_ASSETS_FILE := $(if $(ASSETS_FILE),$(ASSETS_FILE),$(if $(wildcard $(DEFAULT_ASSETS_FILE)),$(DEFAULT_ASSETS_FILE),))
 
@@ -31,7 +33,7 @@ ASSET_ARGS = $(if $(EFFECTIVE_ASSETS_FILE),--assets-file $(abspath $(EFFECTIVE_A
 
 .PHONY: help install run migrate makemigrations shell collect-static superuser test format lint uv-lock uv-update \
 	ollama-check install-services collect-news process-news process-news-scheduled build-rag ollama-model analyze-assets rag-query \
-	pipeline pipeline-from-existing-csv scheduled-once schedule clean-pipeline
+	market-brief analyze-all pipeline pipeline-from-existing-csv scheduled-once schedule clean-pipeline
 
 help:
 	@printf "Tradematic commands:\n"
@@ -50,6 +52,7 @@ help:
 	@printf "  make build-rag               Build CSV-backed RAG index and training JSONL\n"
 	@printf "  make ollama-model            Create local $(OLLAMA_ANALYST_MODEL) Ollama model wrapper\n"
 	@printf "  make analyze-assets          Generate per-asset analysis with Ollama\n"
+	@printf "  make market-brief            Generate categorized market/economic brief\n"
 	@printf "  make rag-query QUESTION='...' Query the built RAG index\n"
 	@printf "  make ollama-check            Verify local llama3.1\n"
 
@@ -144,12 +147,21 @@ analyze-assets:
 		--output-json $(abspath $(ASSET_ANALYSIS_JSON)) \
 		--output-md $(abspath $(ASSET_ANALYSIS_MD))
 
+market-brief:
+	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-brief \
+		--index $(abspath $(RAG_INDEX_CSV)) \
+		--model $(OLLAMA_ANALYST_MODEL) \
+		--output-json $(abspath $(MARKET_BRIEF_JSON)) \
+		--output-md $(abspath $(MARKET_BRIEF_MD))
+
+analyze-all: analyze-assets market-brief
+
 rag-query:
 	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-query \
 		--index $(abspath $(RAG_INDEX_CSV)) \
 		--question "$(QUESTION)"
 
-pipeline: collect-news process-news build-rag ollama-model analyze-assets
+pipeline: collect-news process-news build-rag ollama-model analyze-all
 	@printf "\nPipeline completed:\n"
 	@printf "  raw news:       $(NEWS_CSV_COPY)\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
@@ -157,22 +169,25 @@ pipeline: collect-news process-news build-rag ollama-model analyze-assets
 	@printf "  training JSONL: $(RAG_TRAINING_JSONL)\n"
 	@printf "  analysis JSON:  $(ASSET_ANALYSIS_JSON)\n"
 	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
+	@printf "  market brief:   $(MARKET_BRIEF_MD)\n"
 
-pipeline-from-existing-csv: process-news build-rag ollama-model analyze-assets
+pipeline-from-existing-csv: process-news build-rag ollama-model analyze-all
 	@printf "\nPipeline completed from existing CSV:\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
 	@printf "  RAG index:      $(RAG_INDEX_CSV)\n"
 	@printf "  training JSONL: $(RAG_TRAINING_JSONL)\n"
 	@printf "  analysis JSON:  $(ASSET_ANALYSIS_JSON)\n"
 	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
+	@printf "  market brief:   $(MARKET_BRIEF_MD)\n"
 
-scheduled-once: collect-news process-news-scheduled build-rag ollama-model analyze-assets
+scheduled-once: collect-news process-news-scheduled build-rag ollama-model analyze-all
 	@printf "\nScheduled iteration completed:\n"
 	@printf "  dedup state:    $(DEDUP_STATE_CSV)\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
 	@printf "  RAG index:      $(RAG_INDEX_CSV)\n"
 	@printf "  training JSONL: $(RAG_TRAINING_JSONL)\n"
 	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
+	@printf "  market brief:   $(MARKET_BRIEF_MD)\n"
 
 schedule:
 	@printf "Starting scheduled Tradematic pipeline every $(INTERVAL_SECONDS) seconds.\n"
@@ -183,4 +198,4 @@ schedule:
 	done
 
 clean-pipeline:
-	rm -f $(NEWS_CSV_COPY) $(PROCESSED_CSV) $(DEDUP_STATE_CSV) $(RAG_INDEX_CSV) $(RAG_TRAINING_JSONL) $(OLLAMA_MODELFILE) $(ASSET_ANALYSIS_JSON) $(ASSET_ANALYSIS_MD)
+	rm -f $(NEWS_CSV_COPY) $(PROCESSED_CSV) $(DEDUP_STATE_CSV) $(RAG_INDEX_CSV) $(RAG_TRAINING_JSONL) $(OLLAMA_MODELFILE) $(ASSET_ANALYSIS_JSON) $(ASSET_ANALYSIS_MD) $(MARKET_BRIEF_JSON) $(MARKET_BRIEF_MD)

@@ -45,6 +45,7 @@ edmi-rag-build = "edmi.rag.csv_rag:build_main"
 edmi-rag-query = "edmi.rag.csv_rag:query_main"
 edmi-rag-modelfile = "edmi.rag.csv_rag:modelfile_main"
 edmi-rag-analyze = "edmi.rag.csv_rag:analyze_main"
+edmi-rag-brief = "edmi.rag.csv_rag:brief_main"
 
 [build-system]
 requires = ["hatchling"]
