@@ -320,6 +320,9 @@ def calculate_metrics(token, figi):
 
 from cryptography.fernet import Fernet
 from django.conf import settings
-def decrypt_token(encrypted_token: str) -> str:
+def decrypt(value: str) -> str:
     cipher = Fernet(settings.SECRET_ENCRYPTION_KEY)
-    return cipher.decrypt(encrypted_token.encode()).decode()
+    return cipher.decrypt(value.encode()).decode()
+def encrypt(value: str) -> str:
+    cipher = Fernet(settings.SECRET_ENCRYPTION_KEY)
+    return cipher.encrypt(value.encode()).decode()
