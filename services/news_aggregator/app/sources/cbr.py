@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from httpx import AsyncClient
 
@@ -65,7 +65,7 @@ class CbrCurrencyCollector(SourceCollector):
             }
             return
 
-        loaded_at = datetime.now(UTC).isoformat()
+        loaded_at = datetime.now(timezone.utc).isoformat()
         published_at = self._parse_cbr_date(payload.get("Date", ""))
         valute = payload.get("Valute", {})
         logger.bind(
@@ -148,11 +148,17 @@ class CbrCurrencyCollector(SourceCollector):
             return ""
         try:
             if len(value) == 10 and value.count("/") == 2:
-                parsed = datetime.strptime(value, "%d/%m/%Y").replace(tzinfo=UTC).isoformat()
+                parsed = (
+                    datetime.strptime(value, "%d/%m/%Y")
+                    .replace(tzinfo=timezone.utc)
+                    .isoformat()
+                )
                 date_logger.bind(parsed_date=parsed).debug("Parsed CBR XML date")
                 return parsed
             parsed = (
-                datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC).isoformat()
+                datetime.fromisoformat(value.replace("Z", "+00:00"))
+                .astimezone(timezone.utc)
+                .isoformat()
             )
             date_logger.bind(parsed_date=parsed).debug("Parsed CBR date")
             return parsed

@@ -58,12 +58,10 @@ help:
 	@printf "  make ollama-check            Verify local llama3.1\n"
 
 install:
-	$(UV) sync --python $(TRADER_PYTHON) --frozen --no-install-package tensorflow-io-gcs-filesystem
-	$(UV) pip install cryptography
+	$(UV) sync --python $(TRADER_PYTHON) --all-groups --frozen --no-install-package tensorflow-io-gcs-filesystem
 
 install-services:
-	cd $(NEWS_SERVICE_DIR) && $(UV) sync
-	cd $(EDMI_SERVICE_DIR) && $(UV) sync --all-extras --dev
+	$(MAKE) install
 
 run:
 	$(UV) run --no-sync python manage.py runserver 127.0.0.1:8001
@@ -95,23 +93,21 @@ lint:
 
 uv-lock:
 	$(UV) lock
-	cd $(NEWS_SERVICE_DIR) && $(UV) lock
-	cd $(EDMI_SERVICE_DIR) && $(UV) lock
 
 uv-update:
-	$(UV) sync --upgrade
+	$(UV) sync --all-groups --upgrade --no-install-package tensorflow-io-gcs-filesystem
 
 ollama-check:
 	ollama run llama3.1 "Return exactly: ok"
 
 collect-news:
-	cd $(NEWS_SERVICE_DIR) && $(UV) run python -c 'import asyncio; from app.service import NewsAggregationService; print(asyncio.run(NewsAggregationService().collect_once()))'
+	$(UV) run --no-sync python -c 'import asyncio; from app.service import NewsAggregationService; print(asyncio.run(NewsAggregationService().collect_once()))'
 	mkdir -p $(DATASETS_DIR)
 	cp $(NEWS_CSV) $(NEWS_CSV_COPY)
 
 process-news:
 	mkdir -p $(DATASETS_DIR)
-	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-export-events \
+	$(EDMI_ENV) $(UV) run --no-sync edmi-export-events \
 		--input $(abspath $(NEWS_CSV)) \
 		--output $(abspath $(PROCESSED_CSV)) \
 		--file-order \
@@ -119,7 +115,7 @@ process-news:
 
 process-news-scheduled:
 	mkdir -p $(DATASETS_DIR)
-	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-export-events \
+	$(EDMI_ENV) $(UV) run --no-sync edmi-export-events \
 		--input $(abspath $(NEWS_CSV)) \
 		--output $(abspath $(PROCESSED_CSV)) \
 		--file-order \
@@ -129,20 +125,20 @@ process-news-scheduled:
 
 build-rag:
 	mkdir -p $(DATASETS_DIR)
-	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-build \
+	$(EDMI_ENV) $(UV) run --no-sync edmi-rag-build \
 		--input $(abspath $(PROCESSED_CSV)) \
 		--output $(abspath $(RAG_INDEX_CSV)) \
 		--training-jsonl $(abspath $(RAG_TRAINING_JSONL))
 
 ollama-model:
 	mkdir -p $(DATASETS_DIR)
-	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-modelfile \
+	$(EDMI_ENV) $(UV) run --no-sync edmi-rag-modelfile \
 		--output $(abspath $(OLLAMA_MODELFILE)) \
 		--base-model $(OLLAMA_BASE_MODEL)
 	ollama create $(OLLAMA_ANALYST_MODEL) -f $(OLLAMA_MODELFILE)
 
 analyze-assets:
-	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-analyze \
+	$(EDMI_ENV) $(UV) run --no-sync edmi-rag-analyze \
 		--index $(abspath $(RAG_INDEX_CSV)) \
 		$(ASSET_ARGS) \
 		--model $(OLLAMA_ANALYST_MODEL) \
@@ -150,7 +146,7 @@ analyze-assets:
 		--output-md $(abspath $(ASSET_ANALYSIS_MD))
 
 market-brief:
-	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-brief \
+	$(EDMI_ENV) $(UV) run --no-sync edmi-rag-brief \
 		--index $(abspath $(RAG_INDEX_CSV)) \
 		--model $(OLLAMA_ANALYST_MODEL) \
 		--output-json $(abspath $(MARKET_BRIEF_JSON)) \
@@ -159,7 +155,7 @@ market-brief:
 analyze-all: analyze-assets market-brief
 
 rag-query:
-	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-query \
+	$(EDMI_ENV) $(UV) run --no-sync edmi-rag-query \
 		--index $(abspath $(RAG_INDEX_CSV)) \
 		--question "$(QUESTION)"
 

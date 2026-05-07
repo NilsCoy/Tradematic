@@ -11,9 +11,21 @@
 Полный сценарий одной командой:
 
 ```bash
-make install-services
+make install
 make pipeline LIMIT=20
 ```
+
+`make install` создает один общий корневой `.venv` для всего монолита Tradematic: Django-приложения, `services/news_aggregator` и `services/market_event_engine`. Сервисные пакеты подключены через группу зависимостей `services` в `pyproject.toml` как editable path-зависимости, поэтому отдельные `.venv` внутри сервисов больше не нужны.
+
+Для локального запуска интерфейса:
+
+```bash
+make install
+make migrate
+make run
+```
+
+После запуска UI доступен на `http://127.0.0.1:8001/`.
 
 Если нужен контролируемый universe активов, используйте файл, чтобы не упереться в длину командной строки:
 
@@ -128,11 +140,11 @@ make schedule ASSETS_FILE=main/scripts/datasets/assets.txt LIMIT=20 INTERVAL_SEC
 
 > **make install**
 
-Устанавливает все зависимости из lock-файла с помощью uv sync.
+Устанавливает все зависимости из lock-файла в общий корневой `.venv`: Django, dev-инструменты и сервисную группу `services`.
 
 > **make run**
 
-Запускает Django-сервер разработки на 0.0.0.0:8000.
+Запускает Django-сервер разработки на `127.0.0.1:8001`.
 
 > **make migrate**
 

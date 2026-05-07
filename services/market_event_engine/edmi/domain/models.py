@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
-class EventType(StrEnum):
+class EventType(str, Enum):
     earnings = "earnings"
     product_launch = "product_launch"
     regulation = "regulation"
@@ -15,7 +15,7 @@ class EventType(StrEnum):
     supply_chain = "supply_chain"
 
 
-class RelevanceLevel(StrEnum):
+class RelevanceLevel(str, Enum):
     direct = "direct"
     industry = "industry"
     supply_chain = "supply_chain"
@@ -95,4 +95,3 @@ class ProcessedEvent(BaseModel):
 class Portfolio(BaseModel):
     id: str
     assets: list[str]
-

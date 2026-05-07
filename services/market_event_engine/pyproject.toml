@@ -3,7 +3,7 @@ name = "event-driven-market-intelligence"
 version = "0.1.0"
 description = "Async event-driven market news intelligence service"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10,<3.11"
 dependencies = [
   "arq>=0.26.1",
   "fastapi>=0.115.0",

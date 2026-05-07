@@ -5,7 +5,7 @@ import json
 import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlparse
 
@@ -53,14 +53,14 @@ def parse_datetime(raw_value: str | None) -> str:
         try:
             parsed = datetime.fromisoformat(candidate)
             if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=UTC)
-            return parsed.astimezone(UTC).isoformat()
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc).isoformat()
         except ValueError:
             pass
 
     try:
         parsed = parsedate_to_datetime(value)
-        return parsed.astimezone(UTC).isoformat()
+        return parsed.astimezone(timezone.utc).isoformat()
     except (TypeError, ValueError, IndexError):
         return ""
 
@@ -250,7 +250,7 @@ class HtmlNewsCollector(SourceCollector):
             text=text,
             url=candidate.url,
             chunks=split_text_to_chunks(text),
-            loaded_at=datetime.now(UTC).isoformat(),
+            loaded_at=datetime.now(timezone.utc).isoformat(),
             published_at=candidate.published_at,
         )
 
@@ -497,7 +497,7 @@ class HtmlNewsCollector(SourceCollector):
             )
             return None
 
-        loaded_at = datetime.now(UTC).isoformat()
+        loaded_at = datetime.now(timezone.utc).isoformat()
         article_logger.bind(
             words_total=words_total,
             published_at=published_at,
