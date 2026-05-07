@@ -122,23 +122,39 @@ def _summary(
 
 
 async def _run(args: argparse.Namespace) -> None:
+    assets = _load_assets(args.asset, Path(args.assets_file) if args.assets_file else None)
     summary = await export_processed_events(
         input_csv=Path(args.input),
         output_csv=Path(args.output),
-        assets=args.asset,
+        assets=assets,
         limit=args.limit,
         newest_first=not args.file_order,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
+def _load_assets(cli_assets: list[str], assets_file: Path | None) -> list[str]:
+    assets = [asset.strip().upper() for asset in cli_assets if asset.strip()]
+    if assets_file is not None:
+        text = assets_file.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            clean_line = line.split("#", 1)[0].strip()
+            if not clean_line:
+                continue
+            assets.extend(asset.strip().upper() for asset in clean_line.replace(",", " ").split())
+    unique_assets = list(dict.fromkeys(asset for asset in assets if asset))
+    if not unique_assets:
+        raise ValueError("Provide at least one --asset or --assets-file with asset tickers")
+    return unique_assets
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Process news CSV and export EDMI events to CSV")
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--asset", action="append", required=True)
+    parser.add_argument("--asset", action="append", default=[])
+    parser.add_argument("--assets-file", help="Path to a file with one or many asset tickers per line")
     parser.add_argument("--limit", type=int, default=20)
     parser.add_argument("--file-order", action="store_true")
     args = parser.parse_args()
     asyncio.run(_run(args))
-

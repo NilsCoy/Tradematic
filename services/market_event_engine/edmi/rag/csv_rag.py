@@ -194,6 +194,18 @@ async def analyze_assets(
     }
 
 
+def load_assets(cli_assets: list[str], assets_file: Path | None = None) -> list[str]:
+    assets = [asset.strip().upper() for asset in cli_assets if asset.strip()]
+    if assets_file is not None:
+        text = assets_file.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            clean_line = line.split("#", 1)[0].strip()
+            if not clean_line:
+                continue
+            assets.extend(asset.strip().upper() for asset in clean_line.replace(",", " ").split())
+    return list(dict.fromkeys(asset for asset in assets if asset))
+
+
 def write_modelfile(output: Path, base_model: str = "llama3.1") -> dict:
     output.parent.mkdir(parents=True, exist_ok=True)
     content = f'FROM {base_model}\n\nSYSTEM """{DEFAULT_SYSTEM_PROMPT}"""\n'
@@ -309,9 +321,10 @@ async def _query(args: argparse.Namespace) -> None:
 
 
 async def _analyze(args: argparse.Namespace) -> None:
+    assets = load_assets(args.asset, Path(args.assets_file) if args.assets_file else None)
     result = await analyze_assets(
         Path(args.index),
-        args.asset,
+        assets,
         Path(args.output_json),
         Path(args.output_md),
         args.model,
@@ -351,6 +364,7 @@ def analyze_main() -> None:
     parser = argparse.ArgumentParser(description="Analyze assets with Ollama using CSV-backed RAG context")
     parser.add_argument("--index", required=True)
     parser.add_argument("--asset", action="append", default=[])
+    parser.add_argument("--assets-file", help="Path to a file with one or many asset tickers per line")
     parser.add_argument("--model", default=DEFAULT_ANALYST_MODEL)
     parser.add_argument("--ollama-url")
     parser.add_argument("--top-k", type=int, default=8)

@@ -15,6 +15,21 @@ make install-services
 make pipeline ASSETS="SBER GAZP" LIMIT=20
 ```
 
+Для большого количества активов используйте файл, чтобы не упереться в длину командной строки:
+
+```bash
+make pipeline ASSETS_FILE=main/scripts/datasets/assets.txt LIMIT=20
+```
+
+Файл активов может содержать тикеры по одному на строку, через пробелы или запятые:
+
+```text
+SBER
+GAZP LKOH
+ROSN, VTBR
+# комментарии игнорируются
+```
+
 Что делает `make pipeline`:
 
 ```text
@@ -36,6 +51,12 @@ news_aggregator collect
 
 ```bash
 make pipeline-from-existing-csv ASSETS="SBER GAZP" LIMIT=20
+```
+
+Для больших списков:
+
+```bash
+make pipeline-from-existing-csv ASSETS_FILE=main/scripts/datasets/assets.txt LIMIT=20
 ```
 
 Проверить RAG-поиск:
