@@ -32,7 +32,7 @@ class TranslationService:
             try:
                 translated = translator.translate(chunk)
             except Exception as exc:  # pragma: no cover
-                translation_logger.bind(chunk_index=index).warning(
+                translation_logger.bind(chunk_index=index).debug(
                     f"Translation failed, original text kept: {type(exc).__name__}: {exc}"
                 )
                 translated = chunk

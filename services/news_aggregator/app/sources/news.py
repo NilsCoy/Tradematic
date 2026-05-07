@@ -123,7 +123,7 @@ class HtmlNewsCollector(SourceCollector):
             }
         except Exception as exc:
             error_message = format_exception_message(exc)
-            self.logger.exception("Failed to load source section")
+            self.logger.bind(error=error_message).warning("Failed to load source section")
             yield {
                 "event": "error",
                 "message": f"Не удалось загрузить раздел: {error_message}",
@@ -154,8 +154,22 @@ class HtmlNewsCollector(SourceCollector):
             try:
                 record = await self._parse_article(client, candidate)
             except Exception as exc:
+                fallback = self._record_from_candidate(candidate)
+                if fallback is not None:
+                    article_logger.bind(
+                        title=fallback.title,
+                        error=format_exception_message(exc),
+                    ).debug(
+                        "Article fetch failed, RSS summary fallback kept"
+                    )
+                    return {
+                        "event": "record",
+                        "record": fallback,
+                        "source": self.source_name,
+                        "message": f"Добавлена RSS-запись: {fallback.title}",
+                    }
                 error_message = format_exception_message(exc)
-                article_logger.exception("Failed to parse article")
+                article_logger.bind(error=error_message).warning("Failed to parse article")
                 return {
                     "event": "error",
                     "message": f"Ошибка статьи {candidate.url}: {error_message}",
@@ -173,6 +187,32 @@ class HtmlNewsCollector(SourceCollector):
             "source": self.source_name,
             "message": f"Добавлена статья: {record.title}",
         }
+
+    def _record_from_candidate(self, candidate: ArticleCandidate) -> NewsRecord | None:
+        if not self.source.allow_rss_content_fallback:
+            return None
+
+        title = candidate.title
+        text = candidate.summary
+        if not title or not text:
+            return None
+
+        if self.source.translate_to_russian:
+            title = translator.translate_text(title, self.source_name)
+            text = translator.translate_text(text, self.source_name)
+
+        if word_count(text) < self.source.min_article_words:
+            return None
+
+        return NewsRecord(
+            source=self.source_name,
+            title=title,
+            text=text,
+            url=candidate.url,
+            chunks=split_text_to_chunks(text),
+            loaded_at=datetime.now(UTC).isoformat(),
+            published_at=candidate.published_at,
+        )
 
     async def _extract_article_candidates(self, client: AsyncClient) -> list[ArticleCandidate]:
         if self.source.rss_url:
