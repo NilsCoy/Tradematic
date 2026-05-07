@@ -9,11 +9,19 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlparse
 
+import httpx
 from bs4 import BeautifulSoup
 from httpx import AsyncClient
 
 from app.chunking import split_text_to_chunks
-from app.config import ARTICLE_FETCH_CONCURRENCY, MIN_ARTICLE_WORDS, NEWS_SOURCES
+from app.config import (
+    ARTICLE_FETCH_CONCURRENCY,
+    MIN_ARTICLE_WORDS,
+    NEWS_SOURCES,
+    REQUEST_RETRY_ATTEMPTS,
+    REQUEST_RETRY_BASE_DELAY,
+    REQUEST_RETRY_MAX_DELAY,
+)
 from app.logging import logger
 from app.models import NewsRecord
 from app.sources.base import SourceCollector, SourceResult
@@ -66,6 +74,33 @@ def format_exception_message(exc: Exception) -> str:
     if message:
         return f"{type(exc).__name__}: {message}"
     return f"{type(exc).__name__}: {exc!r}"
+
+
+TRANSIENT_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
+PERMANENT_HTTP_STATUSES = {401, 403, 404, 410, 451}
+TRANSIENT_REQUEST_ERRORS = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+    httpx.ReadError,
+    httpx.ReadTimeout,
+    httpx.RemoteProtocolError,
+    httpx.WriteError,
+    httpx.WriteTimeout,
+)
+
+
+def is_transient_request_error(exc: Exception) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in TRANSIENT_HTTP_STATUSES
+    return isinstance(exc, TRANSIENT_REQUEST_ERRORS)
+
+
+def is_permanent_http_error(exc: Exception) -> bool:
+    return (
+        isinstance(exc, httpx.HTTPStatusError)
+        and exc.response.status_code in PERMANENT_HTTP_STATUSES
+    )
 
 
 @dataclass(slots=True)
@@ -168,6 +203,11 @@ class HtmlNewsCollector(SourceCollector):
                         "source": self.source_name,
                         "message": f"Добавлена RSS-запись: {fallback.title}",
                     }
+                if self.source.allow_rss_content_fallback and is_permanent_http_error(exc):
+                    article_logger.bind(error=format_exception_message(exc)).debug(
+                        "Article blocked and RSS fallback is too short; skipped"
+                    )
+                    return None
                 error_message = format_exception_message(exc)
                 article_logger.bind(error=error_message).warning("Failed to parse article")
                 return {
@@ -219,7 +259,7 @@ class HtmlNewsCollector(SourceCollector):
             return await self._extract_article_candidates_from_rss(client)
 
         self.logger.debug("Requesting section page")
-        response = await client.get(self.source.section_url)
+        response = await self._get_with_retry(client, self.source.section_url)
         response.raise_for_status()
         soup = html_to_soup(response.text)
         candidates: list[ArticleCandidate] = []
@@ -247,7 +287,7 @@ class HtmlNewsCollector(SourceCollector):
     ) -> list[ArticleCandidate]:
         rss_logger = self.logger.bind(rss_url=self.source.rss_url)
         rss_logger.debug("Requesting RSS feed for article discovery")
-        response = await client.get(self.source.rss_url)
+        response = await self._get_with_retry(client, self.source.rss_url)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "xml")
         if not soup.find_all(["item", "entry"]):
@@ -282,6 +322,37 @@ class HtmlNewsCollector(SourceCollector):
 
         rss_logger.bind(urls_found=len(candidates)).debug("Article URLs extracted from RSS")
         return candidates[:20]
+
+    async def _get_with_retry(self, client: AsyncClient, url: str) -> httpx.Response:
+        request_logger = self.logger.bind(url=url)
+        last_exc: Exception | None = None
+
+        for attempt in range(1, REQUEST_RETRY_ATTEMPTS + 1):
+            try:
+                response = await client.get(url)
+                if response.status_code in TRANSIENT_HTTP_STATUSES:
+                    response.raise_for_status()
+                return response
+            except Exception as exc:
+                last_exc = exc
+                if not is_transient_request_error(exc) or attempt >= REQUEST_RETRY_ATTEMPTS:
+                    raise
+
+                delay = min(
+                    REQUEST_RETRY_BASE_DELAY * (2 ** (attempt - 1)),
+                    REQUEST_RETRY_MAX_DELAY,
+                )
+                request_logger.bind(
+                    attempt=attempt,
+                    attempts_total=REQUEST_RETRY_ATTEMPTS,
+                    delay_seconds=delay,
+                    error=format_exception_message(exc),
+                ).debug("Transient request failed, retrying")
+                await asyncio.sleep(delay)
+
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("Request retry loop finished without response")
 
     def _extract_link_from_feed_item(self, item: BeautifulSoup) -> str:
         link_tag = item.find("link")
@@ -377,6 +448,14 @@ class HtmlNewsCollector(SourceCollector):
             return bool(re.search(r"^/\w+/\d{4}/[a-z]{3}/\d{2}/", path))
         if "cnbc.com" in parsed.netloc:
             return bool(re.search(r"/\d{4}/\d{2}/\d{2}/.*\.html$", path))
+        if "handelsblatt.com" in parsed.netloc:
+            if re.search(r"^/(?:boerse/quant|newsletter|audio)(?:/|$)", path):
+                return False
+            return len(path.split("/")) >= 3
+        if "lanacion.com.ar" in parsed.netloc:
+            if not re.search(r"/.+-nid\d+", path):
+                return False
+            return len(path.split("/")) >= 3
         return True
 
     async def _parse_article(
@@ -385,7 +464,7 @@ class HtmlNewsCollector(SourceCollector):
         url = candidate.url
         article_logger = self.logger.bind(article_url=url)
         article_logger.debug("Requesting article page")
-        response = await client.get(url)
+        response = await self._get_with_retry(client, url)
         response.raise_for_status()
         soup = html_to_soup(response.text)
 

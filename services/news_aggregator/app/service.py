@@ -292,8 +292,11 @@ class NewsAggregationService:
                         }
                     )
                 else:
-                    errors.append(event["message"])
-                    collector_logger.bind(event=event["event"]).warning(event["message"])
+                    if event["event"] == "error":
+                        errors.append(event["message"])
+                        collector_logger.bind(event=event["event"]).warning(event["message"])
+                    else:
+                        collector_logger.bind(event=event["event"]).info(event["message"])
                     await queue.put(
                         {
                             "kind": "event",
