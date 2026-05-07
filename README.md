@@ -12,10 +12,10 @@
 
 ```bash
 make install-services
-make pipeline ASSETS="SBER GAZP" LIMIT=20
+make pipeline LIMIT=20
 ```
 
-Для большого количества активов используйте файл, чтобы не упереться в длину командной строки:
+Если нужен контролируемый universe активов, используйте файл, чтобы не упереться в длину командной строки:
 
 ```bash
 make pipeline ASSETS_FILE=main/scripts/datasets/assets.txt LIMIT=20
@@ -24,11 +24,13 @@ make pipeline ASSETS_FILE=main/scripts/datasets/assets.txt LIMIT=20
 Файл активов может содержать тикеры по одному на строку, через пробелы или запятые:
 
 ```text
-SBER
-GAZP LKOH
-ROSN, VTBR
+TICKER_A
+TICKER_B TICKER_C
+TICKER_D, TICKER_E
 # комментарии игнорируются
 ```
+
+Если `ASSETS_FILE` не указан, pipeline сам берет asset labels из NER: найденные компании, товары и макро-сущности попадают в `processed_events.csv` и дальше в RAG-анализ.
 
 Что делает `make pipeline`:
 
@@ -50,7 +52,7 @@ news_aggregator collect
 Если CSV новостей уже собран и нужно только переобработать:
 
 ```bash
-make pipeline-from-existing-csv ASSETS="SBER GAZP" LIMIT=20
+make pipeline-from-existing-csv LIMIT=20
 ```
 
 Для больших списков:
@@ -62,7 +64,7 @@ make pipeline-from-existing-csv ASSETS_FILE=main/scripts/datasets/assets.txt LIM
 Проверить RAG-поиск:
 
 ```bash
-make rag-query QUESTION="Какие события важны для SBER?"
+make rag-query QUESTION="Какие события важны для рынка?"
 ```
 
 Перед первым запуском убедитесь, что локально доступна Ollama:
@@ -74,7 +76,7 @@ make ollama-check
 Основная команда для ежедневного запуска:
 
 ```bash
-make pipeline ASSETS="SBER" LIMIT=20
+make pipeline LIMIT=20
 ```
 
 На выходе главный отчет лежит в `main/scripts/datasets/asset_analysis.md`.

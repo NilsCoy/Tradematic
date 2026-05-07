@@ -1,12 +1,11 @@
 .DEFAULT_GOAL := help
 
 UV ?= uv
-ASSET ?= SBER
-ASSETS ?= $(ASSET)
+ASSETS ?=
 ASSETS_FILE ?=
 LIMIT ?= 20
 INTERVAL_SECONDS ?= 900
-QUESTION ?= Какие события сильнее всего влияют на $(ASSET)?
+QUESTION ?= Какие события сильнее всего влияют на рынок?
 OLLAMA_BASE_MODEL ?= llama3.1
 OLLAMA_ANALYST_MODEL ?= tradematic-analyst
 
@@ -26,7 +25,7 @@ ASSET_ANALYSIS_MD := $(DATASETS_DIR)/asset_analysis.md
 
 EDMI_ENV := EDMI_TRADEMATIC_DATASETS_DIR=$(abspath $(DATASETS_DIR)) EDMI_EMBEDDING_LOCAL_FILES_ONLY=true
 ASSET_FLAGS = $(foreach asset,$(ASSETS),--asset $(asset))
-ASSET_ARGS = $(if $(ASSETS_FILE),--assets-file $(abspath $(ASSETS_FILE)),$(ASSET_FLAGS))
+ASSET_ARGS = $(if $(ASSETS_FILE),--assets-file $(abspath $(ASSETS_FILE)),$(if $(ASSETS),$(ASSET_FLAGS),))
 
 .PHONY: help install run migrate makemigrations shell collect-static superuser test format lint uv-lock uv-update \
 	ollama-check install-services collect-news process-news process-news-scheduled build-rag ollama-model analyze-assets rag-query \
@@ -36,16 +35,15 @@ help:
 	@printf "Tradematic commands:\n"
 	@printf "  make install                 Install Tradematic Django dependencies\n"
 	@printf "  make run                     Run Django development server\n"
-	@printf "  make pipeline ASSETS='SBER GAZP' LIMIT=20\n"
-	@printf "                               Collect news -> EDMI process -> CSV -> RAG -> Ollama analysis\n"
+	@printf "  make pipeline LIMIT=20       Collect news -> EDMI process -> CSV -> RAG -> Ollama analysis\n"
 	@printf "  make pipeline ASSETS_FILE=assets.txt LIMIT=20\n"
-	@printf "                               Same pipeline for large asset universes\n"
-	@printf "  make pipeline-from-existing-csv ASSETS='SBER GAZP' LIMIT=20\n"
+	@printf "                               Same pipeline with an explicit asset universe\n"
+	@printf "  make pipeline-from-existing-csv LIMIT=20\n"
 	@printf "                               Process current parser CSV without collecting\n"
 	@printf "  make schedule ASSETS_FILE=assets.txt INTERVAL_SECONDS=900\n"
 	@printf "                               Run pipeline forever on an interval with persistent dedup\n"
 	@printf "  make collect-news            Run bundled news parser\n"
-	@printf "  make process-news ASSETS='SBER GAZP' LIMIT=20\n"
+	@printf "  make process-news LIMIT=20\n"
 	@printf "                               Process parser CSV into $(PROCESSED_CSV)\n"
 	@printf "  make build-rag               Build CSV-backed RAG index and training JSONL\n"
 	@printf "  make ollama-model            Create local $(OLLAMA_ANALYST_MODEL) Ollama model wrapper\n"
