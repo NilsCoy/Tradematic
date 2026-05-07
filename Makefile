@@ -1,6 +1,7 @@
 .DEFAULT_GOAL := help
 
 UV ?= uv
+TRADER_PYTHON ?= /opt/homebrew/bin/python3.10
 ASSETS ?=
 ASSETS_FILE ?=
 LIMIT ?= 20
@@ -57,32 +58,33 @@ help:
 	@printf "  make ollama-check            Verify local llama3.1\n"
 
 install:
-	$(UV) sync
+	$(UV) sync --python $(TRADER_PYTHON) --frozen --no-install-package tensorflow-io-gcs-filesystem
+	$(UV) pip install cryptography
 
 install-services:
 	cd $(NEWS_SERVICE_DIR) && $(UV) sync
 	cd $(EDMI_SERVICE_DIR) && $(UV) sync --all-extras --dev
 
 run:
-	$(UV) run python manage.py runserver
+	$(UV) run --no-sync python manage.py runserver 127.0.0.1:8001
 
 migrate:
-	$(UV) run python manage.py migrate
+	$(UV) run --no-sync python manage.py migrate
 
 makemigrations:
-	$(UV) run python manage.py makemigrations
+	$(UV) run --no-sync python manage.py makemigrations
 
 shell:
-	$(UV) run python manage.py shell
+	$(UV) run --no-sync python manage.py shell
 
 collect-static:
-	$(UV) run python manage.py collectstatic --noinput
+	$(UV) run --no-sync python manage.py collectstatic --noinput
 
 superuser:
-	$(UV) run python manage.py createsuperuser
+	$(UV) run --no-sync python manage.py createsuperuser
 
 test:
-	$(UV) run python manage.py test
+	$(UV) run --no-sync python manage.py test
 
 format:
 	$(UV) run ruff check . --fix

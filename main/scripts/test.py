@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 import pandas as pd
-from invest.main.scripts.api import (
+from main.scripts.api import (
     get_client,
     get_daily_data,
     get_hourly_data,
@@ -9,7 +9,7 @@ from invest.main.scripts.api import (
     get_weekly_data,
     save_to_csv,
 )
-from invest.main.scripts.model import predict_data_from_array, preload_model
+from main.scripts.model import predict_data_from_array, preload_model
 
 
 def start() -> None:
