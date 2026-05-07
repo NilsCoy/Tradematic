@@ -49,6 +49,24 @@ news_aggregator collect
 
 `rag_training.jsonl` - это выгрузка обучающих примеров из CSV. Локальная Ollama не дообучает веса модели этим файлом напрямую, поэтому рабочая реализация сделана как RAG: новости индексируются, релевантный контекст подается в локальную модель `tradematic-analyst`, а результат сохраняется как анализ по каждому активу.
 
+## Файлы результата pipeline
+
+После `make pipeline` основные артефакты лежат в `main/scripts/datasets`.
+
+| Файл | За что отвечает |
+| --- | --- |
+| `services/news_aggregator/data/news_dataset.csv` | Рабочий CSV самого парсера новостей. Сюда сборщик пишет найденные новости и валютные данные до EDMI-обработки. |
+| `main/scripts/datasets/news_dataset.csv` | Копия сырого CSV внутри общего хранилища Tradematic. Удобная входная точка для последующих шагов и ручной проверки результата сбора. |
+| `main/scripts/datasets/processed_events.csv` | Главный обработанный датасет событий. Здесь уже есть dedup, NER-активы, классификация события, релевантность, sentiment/impact и связь с price datasets Tradematic. |
+| `main/scripts/datasets/processed_state.csv` | Persistent state дедупликации для `make schedule` и `make process-news-scheduled`. Нужен, чтобы повторные новости не уходили заново в NER/LLM между итерациями расписания. |
+| `main/scripts/datasets/rag_index.csv` | CSV-backed RAG index. Из него выбирается релевантный контекст для вопроса или анализа конкретного актива. |
+| `main/scripts/datasets/rag_training.jsonl` | JSONL-представление обработанных событий как обучающих/контекстных примеров. В текущей реализации используется как подготовленный корпус для RAG, а не как fine-tune весов Ollama. |
+| `main/scripts/datasets/Modelfile.tradematic-analyst` | Modelfile для создания локальной Ollama-обертки `tradematic-analyst` поверх базовой модели, по умолчанию `llama3.1`. |
+| `main/scripts/datasets/asset_analysis.json` | Машиночитаемый итоговый анализ по активам: удобно отдавать в API, UI или следующий автоматический шаг. |
+| `main/scripts/datasets/asset_analysis.md` | Человекочитаемый итоговый отчет по активам. Это основной файл, который стоит открывать после завершения pipeline. |
+
+Файлы `daily_data.csv`, `hourly_data.csv`, `weekly_data.csv`, `monthly_data.csv` и `stock_data.csv`, если лежат в `main/scripts/datasets`, относятся к рыночным данным Tradematic. Pipeline использует их как источник ценового контекста, но не пересоздает их при сборе новостей.
+
 Если CSV новостей уже собран и нужно только переобработать:
 
 ```bash
