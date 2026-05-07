@@ -10,6 +10,12 @@ def text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def news_hash(url: str, text: str) -> str:
+    normalized_url = " ".join((url or "").strip().split())
+    normalized_text = " ".join((text or "").strip().split())
+    return text_hash(f"{normalized_url}\n{normalized_text}")
+
+
 class Deduplicator:
     def __init__(self, redis: "Redis | None" = None, key: str = "edmi:news_hashes") -> None:
         self.redis = redis
@@ -24,4 +30,3 @@ class Deduplicator:
             return False
         added = await self.redis.sadd(self.key, digest)
         return added == 0
-

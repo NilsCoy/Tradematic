@@ -12,7 +12,7 @@ from edmi.config import get_settings
 from edmi.domain.models import ProcessedEvent
 from edmi.ingestion.cleaning import clean_text
 from edmi.ingestion.csv_stream import iter_batches, iter_raw_news
-from edmi.infrastructure.dedup import text_hash
+from edmi.infrastructure.dedup import news_hash
 from edmi.services.embedding import EmbeddingService
 from edmi.services.vector import cosine_similarity
 
@@ -85,7 +85,7 @@ async def export_processed_events(
                     return _summary(input_csv, output_csv, accepted, duplicates, state_duplicates, processed)
                 cleaned_title = clean_text(news.title)
                 cleaned_text = clean_text(news.text)
-                digest = text_hash(cleaned_text)
+                digest = news_hash(str(news.url), cleaned_text)
                 if digest in state["hashes"]:
                     state_duplicates += 1
                     processed += 1

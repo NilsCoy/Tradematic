@@ -33,6 +33,36 @@ def test_iter_raw_news_uses_loaded_at_when_published_at_is_empty(tmp_path: Path)
     assert rows[0].published_at.isoformat() == "2026-01-01T00:00:00+00:00"
 
 
+def test_iter_raw_news_uses_chunks_when_text_is_empty(tmp_path: Path) -> None:
+    csv_path = tmp_path / "news.csv"
+    csv_path.write_text(
+        "source,title,text,url,chunks,loaded_at,published_at\n"
+        "rss,Big Oil News,,https://example.com/a,"
+        "Brent oil supply disruption moved markets and changed expectations,"
+        "2026-01-01T00:00:00Z,2026-01-01T00:00:00Z\n",
+        encoding="utf-8",
+    )
+
+    rows = list(iter_raw_news(csv_path))
+
+    assert len(rows) == 1
+    assert "Brent oil supply disruption" in rows[0].text
+
+
+def test_iter_raw_news_filters_rows_without_title(tmp_path: Path) -> None:
+    csv_path = tmp_path / "news.csv"
+    csv_path.write_text(
+        "source,title,text,url,chunks,loaded_at,published_at\n"
+        "rss,,Brent oil supply disruption moved markets and changed expectations,"
+        "https://example.com/a,,2026-01-01T00:00:00Z,2026-01-01T00:00:00Z\n",
+        encoding="utf-8",
+    )
+
+    rows = list(iter_raw_news(csv_path))
+
+    assert rows == []
+
+
 def test_iter_raw_news_allows_large_parser_fields(tmp_path: Path) -> None:
     csv_path = tmp_path / "news.csv"
     text = "Brent oil supply disruption " * 7000

@@ -109,6 +109,7 @@ process-news:
 	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-export-events \
 		--input $(abspath $(NEWS_CSV)) \
 		--output $(abspath $(PROCESSED_CSV)) \
+		--file-order \
 		--limit $(LIMIT)
 
 process-news-scheduled:
@@ -116,6 +117,7 @@ process-news-scheduled:
 	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-export-events \
 		--input $(abspath $(NEWS_CSV)) \
 		--output $(abspath $(PROCESSED_CSV)) \
+		--file-order \
 		--limit $(LIMIT) \
 		--state-file $(abspath $(DEDUP_STATE_CSV)) \
 		--append

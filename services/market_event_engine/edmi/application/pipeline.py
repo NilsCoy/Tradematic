@@ -2,7 +2,7 @@ from uuid import uuid4
 
 from edmi.config import Settings
 from edmi.domain.models import MarketEffect, ProcessedEvent, RawNews, RELEVANCE_WEIGHTS
-from edmi.infrastructure.dedup import Deduplicator, text_hash
+from edmi.infrastructure.dedup import Deduplicator, news_hash
 from edmi.infrastructure.storage import EventRepository
 from edmi.ingestion.cleaning import clean_text
 from edmi.services.embedding import EmbeddingService
@@ -42,7 +42,7 @@ class NewsProcessingPipeline:
             url=news.url,
             published_at=news.published_at,
         )
-        digest = text_hash(cleaned.text)
+        digest = news_hash(str(cleaned.url), cleaned.text)
         if await self.deduplicator.seen_or_add(digest):
             raise DuplicateNewsError("Exact duplicate news")
 
