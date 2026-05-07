@@ -3,7 +3,7 @@ name = "tradematic"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10,<3.11"
 dependencies = [
     "aiohttp>=3.13.0",
     "django==4.2.23",
@@ -13,7 +13,7 @@ dependencies = [
     "tensorboard==2.19.0",
     "tensorboard-data-server==0.7.2",
     "tensorflow==2.19.0",
-    "tensorflow-io-gcs-filesystem==0.31.0",
+    "tinkoff==0.1.1",
     "tinkoff-investments>=0.2.0b117",
     "tqdm>=4.67.1",
     "cryptography>=47.0.0",
@@ -24,11 +24,21 @@ dev = [
     "pytest>=8.4.2",
     "ruff>=0.14.0",
 ]
+services = [
+    "event-driven-market-intelligence[ml,postgres]",
+    "news-aggregator",
+]
+
+[tool.uv.sources]
+event-driven-market-intelligence = { path = "services/market_event_engine", editable = true }
+news-aggregator = { path = "services/news_aggregator", editable = true }
+tinkoff = { url = "https://files.pythonhosted.org/packages/99/b6/0abbb6570ab7f8623a55ed9d8e2c05594d7944ecc0b335a89addfb8f40e1/tinkoff-0.1.1-py3-none-any.whl" }
+tinkoff-investments = { url = "https://files.pythonhosted.org/packages/e7/94/b2afafb602ba54d5dbfa72a1a2473575481c457033ea69f0cdadde404878/tinkoff_investments-0.2.0b117-py3-none-any.whl" }
 
 [tool.ruff]
 fix = true
 line-length = 120
-target-version = "py312"
+target-version = "py310"
 
 [tool.ruff.format]
 quote-style = "single"

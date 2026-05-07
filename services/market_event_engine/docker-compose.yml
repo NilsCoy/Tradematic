@@ -1,0 +1,38 @@
+services:
+  api:
+    build: .
+    env_file: .env.example
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - postgres
+
+  worker:
+    build: .
+    env_file: .env.example
+    command: ["arq", "edmi.infrastructure.worker.WorkerSettings"]
+    depends_on:
+      - redis
+      - postgres
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: edmi
+      POSTGRES_USER: edmi
+      POSTGRES_PASSWORD: edmi
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  postgres_data:
+
