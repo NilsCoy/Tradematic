@@ -31,6 +31,25 @@ class NewsAggregatorPipelineRequest(BaseModel):
     newest_first: bool = True
 
 
+class RagpipeBuildRequest(BaseModel):
+    input_path: str | None = None
+    index_dir: str | None = None
+    limit: int | None = Field(default=None, ge=1)
+    max_words: int = Field(default=180, ge=20, le=500)
+    overlap: int = Field(default=40, ge=0, le=200)
+
+
+class RagpipeQueryRequest(BaseModel):
+    question: str = Field(min_length=1)
+    index_dir: str | None = None
+    top_k: int = Field(default=6, ge=1, le=20)
+
+
+class RagpipeChatRequest(RagpipeQueryRequest):
+    model: str = "tradematic-analyst"
+    ollama_url: str | None = None
+
+
 class EventResponse(BaseModel):
     id: UUID
     news_id: UUID

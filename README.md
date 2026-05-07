@@ -56,6 +56,7 @@ news_aggregator collect
   -> RAG index
   -> main/scripts/datasets/rag_index.csv
   -> main/scripts/datasets/rag_training.jsonl
+  -> hybrid ragpipe index в main/scripts/datasets/ragpipe
   -> Ollama model wrapper tradematic-analyst
   -> main/scripts/datasets/asset_analysis.json
   -> main/scripts/datasets/asset_analysis.md
@@ -64,6 +65,8 @@ news_aggregator collect
 ```
 
 `rag_training.jsonl` - это выгрузка обучающих примеров из CSV. Локальная Ollama не дообучает веса модели этим файлом напрямую, поэтому рабочая реализация сделана как RAG: новости индексируются, релевантный контекст подается в локальную модель `tradematic-analyst`, а результат сохраняется как анализ по каждому активу.
+
+Встроенный `ragpipe` больше не является отдельным проектом. Его логика перенесена в EDMI и запускается из общего Tradematic-окружения. Он строится напрямую на CSV парсера новостей: CSV читается построчно, тексты режутся на чанки, затем создаются BM25 и FAISS индексы. Это быстрый hybrid RAG для интерактивных вопросов и streaming-ответов.
 
 ## Файлы результата pipeline
 
@@ -77,6 +80,10 @@ news_aggregator collect
 | `main/scripts/datasets/processed_state.csv` | Persistent state дедупликации для `make schedule` и `make process-news-scheduled`. Нужен, чтобы повторные новости не уходили заново в NER/LLM между итерациями расписания. |
 | `main/scripts/datasets/rag_index.csv` | CSV-backed RAG index. Из него выбирается релевантный контекст для вопроса или анализа конкретного актива. |
 | `main/scripts/datasets/rag_training.jsonl` | JSONL-представление обработанных событий как обучающих/контекстных примеров. В текущей реализации используется как подготовленный корпус для RAG, а не как fine-tune весов Ollama. |
+| `main/scripts/datasets/ragpipe/ragpipe_docs.jsonl` | Чанки исходных новостей из CSV парсера с метаданными и embedding-векторами для hybrid RAG. |
+| `main/scripts/datasets/ragpipe/ragpipe_bm25.pkl` | BM25 индекс для лексического поиска по новостям. |
+| `main/scripts/datasets/ragpipe/ragpipe_faiss.index` | FAISS индекс для векторного поиска по тем же чанкам. |
+| `main/scripts/datasets/ragpipe/ragpipe_memory.jsonl` | История вопросов и ответов hybrid RAG. Заполняется при `ragpipe-chat` и streaming-запросах. |
 | `main/scripts/datasets/Modelfile.tradematic-analyst` | Modelfile для создания локальной Ollama-обертки `tradematic-analyst` поверх базовой модели, по умолчанию `llama3.1`. |
 | `main/scripts/datasets/asset_analysis.json` | Машиночитаемый итоговый анализ по активам из `ASSETS`, `ASSETS_FILE` или автоматического `main/scripts/datasets/assets.txt`. Каждый актив оценивается по всему новостному фону из RAG. |
 | `main/scripts/datasets/asset_analysis.md` | Человекочитаемый итоговый отчет по активам. Это основной файл, который стоит открывать после завершения pipeline. |
@@ -101,6 +108,23 @@ make pipeline-from-existing-csv ASSETS_FILE=main/scripts/datasets/assets.txt LIM
 
 ```bash
 make rag-query QUESTION="Какие события важны для рынка?"
+```
+
+Проверить hybrid ragpipe, обученный на CSV парсера:
+
+```bash
+make build-ragpipe LIMIT=20
+make ragpipe-query QUESTION="Какие новости важны для рынка?"
+make ragpipe-stream QUESTION="Кратко объясни текущий новостной фон"
+```
+
+Если запущен EDMI API, доступны endpoints:
+
+```text
+POST /ragpipe/build
+POST /ragpipe/query
+POST /ragpipe/chat
+GET  /ragpipe/chat/stream?question=...
 ```
 
 Перед первым запуском убедитесь, что локально доступна Ollama:

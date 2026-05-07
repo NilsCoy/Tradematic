@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 UV ?= uv
-TRADER_PYTHON ?= .venv/Scripts/python.exe
+TRADER_PYTHON ?= python3.10
 ASSETS ?=
 ASSETS_FILE ?=
 LIMIT ?= 20
@@ -20,6 +20,7 @@ PROCESSED_CSV := $(DATASETS_DIR)/processed_events.csv
 DEDUP_STATE_CSV := $(DATASETS_DIR)/processed_state.csv
 RAG_INDEX_CSV := $(DATASETS_DIR)/rag_index.csv
 RAG_TRAINING_JSONL := $(DATASETS_DIR)/rag_training.jsonl
+RAGPIPE_INDEX_DIR := $(DATASETS_DIR)/ragpipe
 OLLAMA_MODELFILE := $(DATASETS_DIR)/Modelfile.$(OLLAMA_ANALYST_MODEL)
 ASSET_ANALYSIS_JSON := $(DATASETS_DIR)/asset_analysis.json
 ASSET_ANALYSIS_MD := $(DATASETS_DIR)/asset_analysis.md
@@ -34,7 +35,8 @@ ASSET_ARGS = $(if $(EFFECTIVE_ASSETS_FILE),--assets-file $(abspath $(EFFECTIVE_A
 
 .PHONY: help install run migrate makemigrations shell collect-static superuser test format lint uv-lock uv-update \
 	ollama-check install-services collect-news process-news process-news-scheduled build-rag ollama-model analyze-assets rag-query \
-	market-brief analyze-all pipeline pipeline-from-existing-csv scheduled-once schedule clean-pipeline
+	build-ragpipe ragpipe-query ragpipe-chat ragpipe-stream market-brief analyze-all pipeline pipeline-from-existing-csv \
+	scheduled-once schedule clean-pipeline
 
 help:
 	@printf "Tradematic commands:\n"
@@ -51,10 +53,12 @@ help:
 	@printf "  make process-news LIMIT=20\n"
 	@printf "                               Process parser CSV into $(PROCESSED_CSV)\n"
 	@printf "  make build-rag               Build CSV-backed RAG index and training JSONL\n"
+	@printf "  make build-ragpipe           Build hybrid BM25+FAISS RAG directly from parser CSV\n"
 	@printf "  make ollama-model            Create local $(OLLAMA_ANALYST_MODEL) Ollama model wrapper\n"
 	@printf "  make analyze-assets          Generate per-asset analysis with Ollama\n"
 	@printf "  make market-brief            Generate categorized market/economic brief\n"
 	@printf "  make rag-query QUESTION='...' Query the built RAG index\n"
+	@printf "  make ragpipe-stream QUESTION='...' Stream hybrid RAG answer from Ollama\n"
 	@printf "  make ollama-check            Verify local llama3.1\n"
 
 install:
@@ -130,6 +134,13 @@ build-rag:
 		--output $(abspath $(RAG_INDEX_CSV)) \
 		--training-jsonl $(abspath $(RAG_TRAINING_JSONL))
 
+build-ragpipe:
+	mkdir -p $(RAGPIPE_INDEX_DIR)
+	$(EDMI_ENV) $(UV) run --no-sync edmi-ragpipe-build \
+		--input $(abspath $(NEWS_CSV)) \
+		--output-dir $(abspath $(RAGPIPE_INDEX_DIR)) \
+		--limit $(LIMIT)
+
 ollama-model:
 	mkdir -p $(DATASETS_DIR)
 	$(EDMI_ENV) $(UV) run --no-sync edmi-rag-modelfile \
@@ -159,30 +170,51 @@ rag-query:
 		--index $(abspath $(RAG_INDEX_CSV)) \
 		--question "$(QUESTION)"
 
-pipeline: collect-news process-news build-rag ollama-model analyze-all
+ragpipe-query:
+	$(EDMI_ENV) $(UV) run --no-sync edmi-ragpipe-query \
+		--index-dir $(abspath $(RAGPIPE_INDEX_DIR)) \
+		--question "$(QUESTION)"
+
+ragpipe-chat:
+	$(EDMI_ENV) $(UV) run --no-sync edmi-ragpipe-chat \
+		--index-dir $(abspath $(RAGPIPE_INDEX_DIR)) \
+		--question "$(QUESTION)" \
+		--model $(OLLAMA_ANALYST_MODEL)
+
+ragpipe-stream:
+	$(EDMI_ENV) $(UV) run --no-sync edmi-ragpipe-chat \
+		--index-dir $(abspath $(RAGPIPE_INDEX_DIR)) \
+		--question "$(QUESTION)" \
+		--model $(OLLAMA_ANALYST_MODEL) \
+		--stream
+
+pipeline: collect-news process-news build-rag build-ragpipe ollama-model analyze-all
 	@printf "\nPipeline completed:\n"
 	@printf "  raw news:       $(NEWS_CSV_COPY)\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
 	@printf "  RAG index:      $(RAG_INDEX_CSV)\n"
+	@printf "  ragpipe index:  $(RAGPIPE_INDEX_DIR)\n"
 	@printf "  training JSONL: $(RAG_TRAINING_JSONL)\n"
 	@printf "  analysis JSON:  $(ASSET_ANALYSIS_JSON)\n"
 	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
 	@printf "  market brief:   $(MARKET_BRIEF_MD)\n"
 
-pipeline-from-existing-csv: process-news build-rag ollama-model analyze-all
+pipeline-from-existing-csv: process-news build-rag build-ragpipe ollama-model analyze-all
 	@printf "\nPipeline completed from existing CSV:\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
 	@printf "  RAG index:      $(RAG_INDEX_CSV)\n"
+	@printf "  ragpipe index:  $(RAGPIPE_INDEX_DIR)\n"
 	@printf "  training JSONL: $(RAG_TRAINING_JSONL)\n"
 	@printf "  analysis JSON:  $(ASSET_ANALYSIS_JSON)\n"
 	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
 	@printf "  market brief:   $(MARKET_BRIEF_MD)\n"
 
-scheduled-once: collect-news process-news-scheduled build-rag ollama-model analyze-all
+scheduled-once: collect-news process-news-scheduled build-rag build-ragpipe ollama-model analyze-all
 	@printf "\nScheduled iteration completed:\n"
 	@printf "  dedup state:    $(DEDUP_STATE_CSV)\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
 	@printf "  RAG index:      $(RAG_INDEX_CSV)\n"
+	@printf "  ragpipe index:  $(RAGPIPE_INDEX_DIR)\n"
 	@printf "  training JSONL: $(RAG_TRAINING_JSONL)\n"
 	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
 	@printf "  market brief:   $(MARKET_BRIEF_MD)\n"
@@ -197,3 +229,4 @@ schedule:
 
 clean-pipeline:
 	rm -f $(NEWS_CSV_COPY) $(PROCESSED_CSV) $(DEDUP_STATE_CSV) $(RAG_INDEX_CSV) $(RAG_TRAINING_JSONL) $(OLLAMA_MODELFILE) $(ASSET_ANALYSIS_JSON) $(ASSET_ANALYSIS_MD) $(MARKET_BRIEF_JSON) $(MARKET_BRIEF_MD)
+	rm -rf $(RAGPIPE_INDEX_DIR)

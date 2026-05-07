@@ -16,7 +16,9 @@ dependencies = [
 
 [project.optional-dependencies]
 ml = [
+  "faiss-cpu>=1.7.4",
   "natasha>=1.6.0",
+  "rank-bm25>=0.2.2",
   "sentence-transformers>=3.0.0",
   "scikit-learn>=1.5.0",
   "spacy>=3.7.0",
@@ -46,6 +48,9 @@ edmi-rag-query = "edmi.rag.csv_rag:query_main"
 edmi-rag-modelfile = "edmi.rag.csv_rag:modelfile_main"
 edmi-rag-analyze = "edmi.rag.csv_rag:analyze_main"
 edmi-rag-brief = "edmi.rag.csv_rag:brief_main"
+edmi-ragpipe-build = "edmi.rag.ragpipe:build_main"
+edmi-ragpipe-query = "edmi.rag.ragpipe:query_main"
+edmi-ragpipe-chat = "edmi.rag.ragpipe:chat_main"
 
 [build-system]
 requires = ["hatchling"]
