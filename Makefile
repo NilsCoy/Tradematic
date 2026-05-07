@@ -2,8 +2,11 @@
 
 UV ?= uv
 ASSET ?= SBER
+ASSETS ?= $(ASSET)
 LIMIT ?= 20
 QUESTION ?= Какие события сильнее всего влияют на $(ASSET)?
+OLLAMA_BASE_MODEL ?= llama3.1
+OLLAMA_ANALYST_MODEL ?= tradematic-analyst
 
 NEWS_SERVICE_DIR := services/news_aggregator
 EDMI_SERVICE_DIR := services/market_event_engine
@@ -14,23 +17,30 @@ NEWS_CSV_COPY := $(DATASETS_DIR)/news_dataset.csv
 PROCESSED_CSV := $(DATASETS_DIR)/processed_events.csv
 RAG_INDEX_CSV := $(DATASETS_DIR)/rag_index.csv
 RAG_TRAINING_JSONL := $(DATASETS_DIR)/rag_training.jsonl
+OLLAMA_MODELFILE := $(DATASETS_DIR)/Modelfile.$(OLLAMA_ANALYST_MODEL)
+ASSET_ANALYSIS_JSON := $(DATASETS_DIR)/asset_analysis.json
+ASSET_ANALYSIS_MD := $(DATASETS_DIR)/asset_analysis.md
 
 EDMI_ENV := EDMI_TRADEMATIC_DATASETS_DIR=$(abspath $(DATASETS_DIR)) EDMI_EMBEDDING_LOCAL_FILES_ONLY=true
+ASSET_FLAGS = $(foreach asset,$(ASSETS),--asset $(asset))
 
 .PHONY: help install run migrate makemigrations shell collect-static superuser test format lint uv-lock uv-update \
-	ollama-check install-services collect-news process-news build-rag rag-query pipeline pipeline-from-existing-csv clean-pipeline
+	ollama-check install-services collect-news process-news build-rag ollama-model analyze-assets rag-query pipeline pipeline-from-existing-csv clean-pipeline
 
 help:
 	@printf "Tradematic commands:\n"
 	@printf "  make install                 Install Tradematic Django dependencies\n"
 	@printf "  make run                     Run Django development server\n"
-	@printf "  make pipeline ASSET=SBER     Collect news -> EDMI process -> CSV -> RAG index\n"
-	@printf "  make pipeline-from-existing-csv ASSET=SBER LIMIT=20\n"
+	@printf "  make pipeline ASSETS='SBER GAZP' LIMIT=20\n"
+	@printf "                               Collect news -> EDMI process -> CSV -> RAG -> Ollama analysis\n"
+	@printf "  make pipeline-from-existing-csv ASSETS='SBER GAZP' LIMIT=20\n"
 	@printf "                               Process current parser CSV without collecting\n"
 	@printf "  make collect-news            Run bundled news parser\n"
-	@printf "  make process-news ASSET=SBER LIMIT=20\n"
+	@printf "  make process-news ASSETS='SBER GAZP' LIMIT=20\n"
 	@printf "                               Process parser CSV into $(PROCESSED_CSV)\n"
 	@printf "  make build-rag               Build CSV-backed RAG index and training JSONL\n"
+	@printf "  make ollama-model            Create local $(OLLAMA_ANALYST_MODEL) Ollama model wrapper\n"
+	@printf "  make analyze-assets          Generate per-asset analysis with Ollama\n"
 	@printf "  make rag-query QUESTION='...' Query the built RAG index\n"
 	@printf "  make ollama-check            Verify local llama3.1\n"
 
@@ -90,7 +100,7 @@ process-news:
 	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-export-events \
 		--input $(abspath $(NEWS_CSV)) \
 		--output $(abspath $(PROCESSED_CSV)) \
-		--asset $(ASSET) \
+		$(ASSET_FLAGS) \
 		--limit $(LIMIT)
 
 build-rag:
@@ -100,23 +110,42 @@ build-rag:
 		--output $(abspath $(RAG_INDEX_CSV)) \
 		--training-jsonl $(abspath $(RAG_TRAINING_JSONL))
 
+ollama-model:
+	mkdir -p $(DATASETS_DIR)
+	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-modelfile \
+		--output $(abspath $(OLLAMA_MODELFILE)) \
+		--base-model $(OLLAMA_BASE_MODEL)
+	ollama create $(OLLAMA_ANALYST_MODEL) -f $(OLLAMA_MODELFILE)
+
+analyze-assets:
+	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-analyze \
+		--index $(abspath $(RAG_INDEX_CSV)) \
+		$(ASSET_FLAGS) \
+		--model $(OLLAMA_ANALYST_MODEL) \
+		--output-json $(abspath $(ASSET_ANALYSIS_JSON)) \
+		--output-md $(abspath $(ASSET_ANALYSIS_MD))
+
 rag-query:
 	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-query \
 		--index $(abspath $(RAG_INDEX_CSV)) \
 		--question "$(QUESTION)"
 
-pipeline: collect-news process-news build-rag
+pipeline: collect-news process-news build-rag ollama-model analyze-assets
 	@printf "\nPipeline completed:\n"
 	@printf "  raw news:       $(NEWS_CSV_COPY)\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
 	@printf "  RAG index:      $(RAG_INDEX_CSV)\n"
 	@printf "  training JSONL: $(RAG_TRAINING_JSONL)\n"
+	@printf "  analysis JSON:  $(ASSET_ANALYSIS_JSON)\n"
+	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
 
-pipeline-from-existing-csv: process-news build-rag
+pipeline-from-existing-csv: process-news build-rag ollama-model analyze-assets
 	@printf "\nPipeline completed from existing CSV:\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
 	@printf "  RAG index:      $(RAG_INDEX_CSV)\n"
 	@printf "  training JSONL: $(RAG_TRAINING_JSONL)\n"
+	@printf "  analysis JSON:  $(ASSET_ANALYSIS_JSON)\n"
+	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
 
 clean-pipeline:
-	rm -f $(NEWS_CSV_COPY) $(PROCESSED_CSV) $(RAG_INDEX_CSV) $(RAG_TRAINING_JSONL)
+	rm -f $(NEWS_CSV_COPY) $(PROCESSED_CSV) $(RAG_INDEX_CSV) $(RAG_TRAINING_JSONL) $(OLLAMA_MODELFILE) $(ASSET_ANALYSIS_JSON) $(ASSET_ANALYSIS_MD)

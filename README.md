@@ -12,7 +12,7 @@
 
 ```bash
 make install-services
-make pipeline ASSET=SBER LIMIT=20
+make pipeline ASSETS="SBER GAZP" LIMIT=20
 ```
 
 Что делает `make pipeline`:
@@ -25,12 +25,17 @@ news_aggregator collect
   -> RAG index
   -> main/scripts/datasets/rag_index.csv
   -> main/scripts/datasets/rag_training.jsonl
+  -> Ollama model wrapper tradematic-analyst
+  -> main/scripts/datasets/asset_analysis.json
+  -> main/scripts/datasets/asset_analysis.md
 ```
+
+`rag_training.jsonl` - это выгрузка обучающих примеров из CSV. Локальная Ollama не дообучает веса модели этим файлом напрямую, поэтому рабочая реализация сделана как RAG: новости индексируются, релевантный контекст подается в локальную модель `tradematic-analyst`, а результат сохраняется как анализ по каждому активу.
 
 Если CSV новостей уже собран и нужно только переобработать:
 
 ```bash
-make pipeline-from-existing-csv ASSET=SBER LIMIT=20
+make pipeline-from-existing-csv ASSETS="SBER GAZP" LIMIT=20
 ```
 
 Проверить RAG-поиск:
@@ -44,6 +49,14 @@ make rag-query QUESTION="Какие события важны для SBER?"
 ```bash
 make ollama-check
 ```
+
+Основная команда для ежедневного запуска:
+
+```bash
+make pipeline ASSETS="SBER" LIMIT=20
+```
+
+На выходе главный отчет лежит в `main/scripts/datasets/asset_analysis.md`.
 
 ## Использование Makefile
 

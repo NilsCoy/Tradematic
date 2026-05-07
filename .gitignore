@@ -60,6 +60,9 @@ main/scripts/datasets/news_dataset.csv
 main/scripts/datasets/processed_events.csv
 main/scripts/datasets/rag_index.csv
 main/scripts/datasets/rag_training.jsonl
+main/scripts/datasets/Modelfile.*
+main/scripts/datasets/asset_analysis.json
+main/scripts/datasets/asset_analysis.md
 
 # Temporary files
 *.pid
