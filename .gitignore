@@ -58,6 +58,7 @@ dist/
 services/news_aggregator/data/news_dataset.csv
 main/scripts/datasets/news_dataset.csv
 main/scripts/datasets/processed_events.csv
+main/scripts/datasets/processed_state.csv
 main/scripts/datasets/rag_index.csv
 main/scripts/datasets/rag_training.jsonl
 main/scripts/datasets/Modelfile.*

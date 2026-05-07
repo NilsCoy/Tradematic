@@ -10,7 +10,11 @@ from edmi.application.factory import make_pipeline
 from edmi.application.pipeline import DuplicateNewsError
 from edmi.config import get_settings
 from edmi.domain.models import ProcessedEvent
+from edmi.ingestion.cleaning import clean_text
 from edmi.ingestion.csv_stream import iter_batches, iter_raw_news
+from edmi.infrastructure.dedup import text_hash
+from edmi.services.embedding import EmbeddingService
+from edmi.services.vector import cosine_similarity
 
 
 FIELDNAMES = (
@@ -35,6 +39,15 @@ FIELDNAMES = (
     "text",
 )
 
+STATE_FIELDNAMES = (
+    "text_hash",
+    "embedding_json",
+    "source",
+    "title",
+    "url",
+    "published_at",
+)
+
 
 async def export_processed_events(
     input_csv: Path,
@@ -42,35 +55,65 @@ async def export_processed_events(
     assets: list[str],
     limit: int | None,
     newest_first: bool,
+    state_csv: Path | None = None,
+    append: bool = False,
 ) -> dict[str, int | str]:
     settings = get_settings()
     pipeline = await make_pipeline()
+    embedding_service = EmbeddingService(settings)
+    state = _load_state(state_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
 
     accepted = 0
     duplicates = 0
     processed = 0
-    with output_csv.open("w", encoding="utf-8", newline="") as file:
+    state_duplicates = 0
+    mode = "a" if append and output_csv.exists() else "w"
+    with output_csv.open(mode, encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=FIELDNAMES)
-        writer.writeheader()
+        if mode == "w":
+            writer.writeheader()
         for batch in iter_batches(
             iter_raw_news(input_csv, newest_first=newest_first),
             settings.batch_size,
         ):
             for news in batch:
                 if limit is not None and processed >= limit:
-                    return _summary(input_csv, output_csv, accepted, duplicates, processed)
+                    _save_state(state_csv, state)
+                    return _summary(input_csv, output_csv, accepted, duplicates, state_duplicates, processed)
+                cleaned_title = clean_text(news.title)
+                cleaned_text = clean_text(news.text)
+                digest = text_hash(cleaned_text)
+                if digest in state["hashes"]:
+                    state_duplicates += 1
+                    processed += 1
+                    continue
+
+                embedding = await embedding_service.embed(f"{cleaned_title}\n{cleaned_text}")
+                if _is_semantic_duplicate(embedding, state["embeddings"], settings.semantic_dup_threshold):
+                    state["hashes"].add(digest)
+                    state["rows"].append(_state_row_from_news(digest, embedding, news))
+                    state_duplicates += 1
+                    processed += 1
+                    continue
+
                 try:
                     event = await pipeline.process(news, assets)
                     accepted += 1
                     for row in _event_rows(event, assets):
                         writer.writerow(row)
+                    state["hashes"].add(digest)
+                    state["rows"].append(_state_row(event))
+                    state["embeddings"].append(event.embedding)
                 except DuplicateNewsError:
+                    state["hashes"].add(digest)
+                    state["rows"].append(_state_row_from_news(digest, embedding, news))
                     duplicates += 1
                 finally:
                     processed += 1
 
-    return _summary(input_csv, output_csv, accepted, duplicates, processed)
+    _save_state(state_csv, state)
+    return _summary(input_csv, output_csv, accepted, duplicates, state_duplicates, processed)
 
 
 def _event_rows(event: ProcessedEvent, assets: list[str]) -> list[dict]:
@@ -110,6 +153,7 @@ def _summary(
     output_csv: Path,
     accepted: int,
     duplicates: int,
+    state_duplicates: int,
     processed: int,
 ) -> dict[str, int | str]:
     return {
@@ -117,6 +161,7 @@ def _summary(
         "output_csv": str(output_csv),
         "accepted": accepted,
         "duplicates": duplicates,
+        "state_duplicates": state_duplicates,
         "processed": processed,
     }
 
@@ -129,8 +174,71 @@ async def _run(args: argparse.Namespace) -> None:
         assets=assets,
         limit=args.limit,
         newest_first=not args.file_order,
+        state_csv=Path(args.state_file) if args.state_file else None,
+        append=args.append,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
+def _load_state(state_csv: Path | None) -> dict:
+    state = {"hashes": set(), "embeddings": [], "rows": []}
+    if state_csv is None or not state_csv.exists():
+        return state
+
+    with state_csv.open("r", encoding="utf-8", newline="") as file:
+        for row in csv.DictReader(file):
+            digest = row.get("text_hash", "")
+            if digest:
+                state["hashes"].add(digest)
+            try:
+                embedding = json.loads(row.get("embedding_json", "[]"))
+            except json.JSONDecodeError:
+                embedding = []
+            if embedding:
+                state["embeddings"].append(embedding)
+            state["rows"].append(row)
+    return state
+
+
+def _save_state(state_csv: Path | None, state: dict) -> None:
+    if state_csv is None:
+        return
+    state_csv.parent.mkdir(parents=True, exist_ok=True)
+    with state_csv.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=STATE_FIELDNAMES)
+        writer.writeheader()
+        for row in state["rows"]:
+            writer.writerow({field: row.get(field, "") for field in STATE_FIELDNAMES})
+
+
+def _is_semantic_duplicate(
+    embedding: list[float],
+    existing_embeddings: list[list[float]],
+    threshold: float,
+) -> bool:
+    return any(cosine_similarity(embedding, existing) >= threshold for existing in existing_embeddings)
+
+
+def _state_row(event: ProcessedEvent) -> dict[str, str]:
+    return {
+        "text_hash": event.text_hash,
+        "embedding_json": json.dumps(event.embedding),
+        "source": event.raw_news.source,
+        "title": event.raw_news.title,
+        "url": str(event.raw_news.url),
+        "published_at": event.raw_news.published_at.isoformat(),
+    }
+
+
+def _state_row_from_news(digest: str, embedding: list[float], news) -> dict[str, str]:
+    return {
+        "text_hash": digest,
+        "embedding_json": json.dumps(embedding),
+        "source": news.source,
+        "title": clean_text(news.title),
+        "url": str(news.url),
+        "published_at": news.published_at.isoformat(),
+    }
 
 
 def _load_assets(cli_assets: list[str], assets_file: Path | None) -> list[str]:
@@ -156,5 +264,7 @@ def main() -> None:
     parser.add_argument("--assets-file", help="Path to a file with one or many asset tickers per line")
     parser.add_argument("--limit", type=int, default=20)
     parser.add_argument("--file-order", action="store_true")
+    parser.add_argument("--state-file", help="Persistent exact and semantic dedup state CSV")
+    parser.add_argument("--append", action="store_true", help="Append accepted events to output instead of overwriting it")
     args = parser.parse_args()
     asyncio.run(_run(args))

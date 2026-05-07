@@ -79,6 +79,20 @@ make pipeline ASSETS="SBER" LIMIT=20
 
 На выходе главный отчет лежит в `main/scripts/datasets/asset_analysis.md`.
 
+## Запуск по расписанию
+
+Для постоянной работы pipeline:
+
+```bash
+make schedule ASSETS_FILE=main/scripts/datasets/assets.txt LIMIT=20 INTERVAL_SECONDS=900
+```
+
+Каждая итерация делает полный цикл: сбор новостей, persistent dedup, EDMI processing с NER/Ollama/price delta, обновление CSV, пересборку RAG и выпуск анализа по активам.
+
+Для дедупликации между итерациями используется `main/scripts/datasets/processed_state.csv`. В нем хранятся хэши и embeddings уже обработанных новостей, поэтому повторные новости не отправляются заново в NER/LLM даже если снова встретились позже.
+
+Остановить расписание можно обычным `Ctrl+C`.
+
 ## Использование Makefile
 
 Проект использует Makefile для упрощения типовых задач разработки на Django с использованием менеджера пакетов uv.

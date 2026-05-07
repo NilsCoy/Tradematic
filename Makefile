@@ -5,6 +5,7 @@ ASSET ?= SBER
 ASSETS ?= $(ASSET)
 ASSETS_FILE ?=
 LIMIT ?= 20
+INTERVAL_SECONDS ?= 900
 QUESTION ?= Какие события сильнее всего влияют на $(ASSET)?
 OLLAMA_BASE_MODEL ?= llama3.1
 OLLAMA_ANALYST_MODEL ?= tradematic-analyst
@@ -16,6 +17,7 @@ DATASETS_DIR := main/scripts/datasets
 NEWS_CSV := $(NEWS_SERVICE_DIR)/data/news_dataset.csv
 NEWS_CSV_COPY := $(DATASETS_DIR)/news_dataset.csv
 PROCESSED_CSV := $(DATASETS_DIR)/processed_events.csv
+DEDUP_STATE_CSV := $(DATASETS_DIR)/processed_state.csv
 RAG_INDEX_CSV := $(DATASETS_DIR)/rag_index.csv
 RAG_TRAINING_JSONL := $(DATASETS_DIR)/rag_training.jsonl
 OLLAMA_MODELFILE := $(DATASETS_DIR)/Modelfile.$(OLLAMA_ANALYST_MODEL)
@@ -27,7 +29,8 @@ ASSET_FLAGS = $(foreach asset,$(ASSETS),--asset $(asset))
 ASSET_ARGS = $(if $(ASSETS_FILE),--assets-file $(abspath $(ASSETS_FILE)),$(ASSET_FLAGS))
 
 .PHONY: help install run migrate makemigrations shell collect-static superuser test format lint uv-lock uv-update \
-	ollama-check install-services collect-news process-news build-rag ollama-model analyze-assets rag-query pipeline pipeline-from-existing-csv clean-pipeline
+	ollama-check install-services collect-news process-news process-news-scheduled build-rag ollama-model analyze-assets rag-query \
+	pipeline pipeline-from-existing-csv scheduled-once schedule clean-pipeline
 
 help:
 	@printf "Tradematic commands:\n"
@@ -39,6 +42,8 @@ help:
 	@printf "                               Same pipeline for large asset universes\n"
 	@printf "  make pipeline-from-existing-csv ASSETS='SBER GAZP' LIMIT=20\n"
 	@printf "                               Process current parser CSV without collecting\n"
+	@printf "  make schedule ASSETS_FILE=assets.txt INTERVAL_SECONDS=900\n"
+	@printf "                               Run pipeline forever on an interval with persistent dedup\n"
 	@printf "  make collect-news            Run bundled news parser\n"
 	@printf "  make process-news ASSETS='SBER GAZP' LIMIT=20\n"
 	@printf "                               Process parser CSV into $(PROCESSED_CSV)\n"
@@ -107,6 +112,16 @@ process-news:
 		$(ASSET_ARGS) \
 		--limit $(LIMIT)
 
+process-news-scheduled:
+	mkdir -p $(DATASETS_DIR)
+	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-export-events \
+		--input $(abspath $(NEWS_CSV)) \
+		--output $(abspath $(PROCESSED_CSV)) \
+		$(ASSET_ARGS) \
+		--limit $(LIMIT) \
+		--state-file $(abspath $(DEDUP_STATE_CSV)) \
+		--append
+
 build-rag:
 	mkdir -p $(DATASETS_DIR)
 	cd $(EDMI_SERVICE_DIR) && $(EDMI_ENV) $(UV) run edmi-rag-build \
@@ -151,5 +166,21 @@ pipeline-from-existing-csv: process-news build-rag ollama-model analyze-assets
 	@printf "  analysis JSON:  $(ASSET_ANALYSIS_JSON)\n"
 	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
 
+scheduled-once: collect-news process-news-scheduled build-rag ollama-model analyze-assets
+	@printf "\nScheduled iteration completed:\n"
+	@printf "  dedup state:    $(DEDUP_STATE_CSV)\n"
+	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
+	@printf "  RAG index:      $(RAG_INDEX_CSV)\n"
+	@printf "  training JSONL: $(RAG_TRAINING_JSONL)\n"
+	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
+
+schedule:
+	@printf "Starting scheduled Tradematic pipeline every $(INTERVAL_SECONDS) seconds.\n"
+	@while true; do \
+		$(MAKE) scheduled-once || printf "Scheduled iteration failed; retrying after interval.\n"; \
+		printf "Sleeping $(INTERVAL_SECONDS) seconds before next iteration.\n"; \
+		sleep $(INTERVAL_SECONDS); \
+	done
+
 clean-pipeline:
-	rm -f $(NEWS_CSV_COPY) $(PROCESSED_CSV) $(RAG_INDEX_CSV) $(RAG_TRAINING_JSONL) $(OLLAMA_MODELFILE) $(ASSET_ANALYSIS_JSON) $(ASSET_ANALYSIS_MD)
+	rm -f $(NEWS_CSV_COPY) $(PROCESSED_CSV) $(DEDUP_STATE_CSV) $(RAG_INDEX_CSV) $(RAG_TRAINING_JSONL) $(OLLAMA_MODELFILE) $(ASSET_ANALYSIS_JSON) $(ASSET_ANALYSIS_MD)
