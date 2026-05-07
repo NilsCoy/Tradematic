@@ -14,7 +14,8 @@ from main.scripts.api import (
     get_name_stock,
     save_to_csv,
     calculate_metrics,
-    decrypt_token,
+    decrypt,
+    encrypt,
 )
 from main.scripts.model import predict_data_from_array, preload_model, get_offset, get_slice_data, get_unique_slice_data
 
@@ -28,12 +29,9 @@ def add_portfolio(request):
         messages.error(request, 'Неверный токен!')
         return redirect('panel')
 
-    cipher = Fernet(settings.SECRET_ENCRYPTION_KEY)
-    encrypted_token = cipher.encrypt(token.encode()).decode()
-
     _, created = UserTokens.objects.get_or_create(
         username=username,
-        token=encrypted_token,
+        token=encrypt(token),
     )
 
     if not created:
@@ -57,7 +55,7 @@ def get_portfolio(username):
     content = []
 
     for token in tokens:
-        token = decrypt_token(token)
+        token = decrypt(token)
         account = get_account(token)
 
         portfolio = {}
