@@ -36,7 +36,7 @@ ASSET_ARGS = $(if $(EFFECTIVE_ASSETS_FILE),--assets-file $(abspath $(EFFECTIVE_A
 .PHONY: help install run migrate makemigrations shell collect-static superuser test format lint uv-lock uv-update \
 	ollama-check install-services collect-news process-news process-news-scheduled build-rag ollama-model analyze-assets rag-query \
 	build-ragpipe ragpipe-query ragpipe-chat ragpipe-stream market-brief analyze-all pipeline pipeline-from-existing-csv \
-	scheduled-once schedule clean-pipeline
+	scheduled-once schedule clean-pipeline docker-build docker-up docker-pipeline docker-schedule docker-smoke docker-down docker-logs
 
 help:
 	@printf "Tradematic commands:\n"
@@ -60,6 +60,11 @@ help:
 	@printf "  make rag-query QUESTION='...' Query the built RAG index\n"
 	@printf "  make ragpipe-stream QUESTION='...' Stream hybrid RAG answer from Ollama\n"
 	@printf "  make ollama-check            Verify local llama3.1\n"
+	@printf "  make docker-up               Build and run web/API/Redis/Postgres/Ollama\n"
+	@printf "  make docker-pipeline LIMIT=5 Run one Docker pipeline iteration\n"
+	@printf "  make docker-pipeline-existing LIMIT=5\n"
+	@printf "                               Run Docker EDMI/RAG pipeline from current parser CSV\n"
+	@printf "  make docker-smoke            Run Docker integration smoke checks\n"
 
 install:
 	$(UV) sync --python $(TRADER_PYTHON) --all-groups --frozen --no-install-package tensorflow-io-gcs-filesystem
@@ -146,7 +151,10 @@ ollama-model:
 	$(EDMI_ENV) $(UV) run --no-sync edmi-rag-modelfile \
 		--output $(abspath $(OLLAMA_MODELFILE)) \
 		--base-model $(OLLAMA_BASE_MODEL)
-	ollama create $(OLLAMA_ANALYST_MODEL) -f $(OLLAMA_MODELFILE)
+	$(UV) run --no-sync python scripts/create_ollama_model.py \
+		--model $(OLLAMA_ANALYST_MODEL) \
+		--modelfile $(abspath $(OLLAMA_MODELFILE)) \
+		--ollama-url "$${EDMI_OLLAMA_URL:-http://localhost:11434}"
 
 analyze-assets:
 	$(EDMI_ENV) $(UV) run --no-sync edmi-rag-analyze \
@@ -230,3 +238,27 @@ schedule:
 clean-pipeline:
 	rm -f $(NEWS_CSV_COPY) $(PROCESSED_CSV) $(DEDUP_STATE_CSV) $(RAG_INDEX_CSV) $(RAG_TRAINING_JSONL) $(OLLAMA_MODELFILE) $(ASSET_ANALYSIS_JSON) $(ASSET_ANALYSIS_MD) $(MARKET_BRIEF_JSON) $(MARKET_BRIEF_MD)
 	rm -rf $(RAGPIPE_INDEX_DIR)
+
+docker-build:
+	docker compose build
+
+docker-up:
+	docker compose up -d --build web edmi-api redis postgres ollama ollama-init
+
+docker-pipeline:
+	PIPELINE_LIMIT=$(LIMIT) docker compose --profile pipeline up --build pipeline
+
+docker-pipeline-existing:
+	PIPELINE_LIMIT=$(LIMIT) PIPELINE_MODE=existing-csv docker compose --profile pipeline up --build pipeline
+
+docker-schedule:
+	PIPELINE_LIMIT=$(LIMIT) PIPELINE_MODE=schedule docker compose --profile pipeline up -d --build pipeline
+
+docker-smoke:
+	docker compose --profile smoke run --rm smoke
+
+docker-logs:
+	docker compose logs -f --tail=200
+
+docker-down:
+	docker compose down

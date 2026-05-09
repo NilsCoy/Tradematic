@@ -10,6 +10,7 @@ dependencies = [
     "matplotlib>=3.9.4",
     "pandas>=2.3.3",
     "scikit-learn>=1.6.1",
+    "setuptools<81",
     "tensorboard==2.19.0",
     "tensorboard-data-server==0.7.2",
     "tensorflow==2.19.0",

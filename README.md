@@ -28,6 +28,57 @@ make run
 
 После запуска UI доступен на `http://127.0.0.1:8001/`.
 
+## Docker Compose запуск
+
+Полный стек поднимается через Docker Compose:
+
+```bash
+make docker-up
+```
+
+После запуска доступны:
+
+- Django UI: `http://127.0.0.1:8001/`
+- EDMI API: `http://127.0.0.1:8000/health`
+- Ollama: `http://127.0.0.1:11434`
+- Postgres/pgvector: `127.0.0.1:5432`
+- Redis: `127.0.0.1:6379`
+
+Первый запуск скачивает образы Postgres/Redis/Ollama и модель `llama3.1`, поэтому может занять заметное время. Повторные запуски используют Docker cache и volume `ollama_data`.
+
+Запустить весь pipeline в контейнерах:
+
+```bash
+make docker-pipeline LIMIT=20
+```
+
+Если CSV уже собран и нужно быстро проверить EDMI processing, RAG, ragpipe и Ollama-анализ:
+
+```bash
+make docker-pipeline-existing LIMIT=20
+```
+
+Smoke-проверка поднятого стека:
+
+```bash
+make docker-smoke
+```
+
+Она проверяет Django, EDMI API, наличие итоговых файлов, ragpipe index и endpoint `/ragpipe/query`.
+
+Запуск по расписанию в Docker:
+
+```bash
+make docker-schedule LIMIT=20 INTERVAL_SECONDS=900
+```
+
+Логи и остановка:
+
+```bash
+make docker-logs
+make docker-down
+```
+
 Если нужен контролируемый universe активов, используйте файл, чтобы не упереться в длину командной строки:
 
 ```bash
