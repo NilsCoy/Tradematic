@@ -6,6 +6,7 @@
 
 - `services/news_aggregator` - сборщик новостей.
 - `services/market_event_engine` - EDMI processing: dedup, embeddings, NER, Ollama classification, relevance, Tradematic price delta.
+- `services/ragpipe` - hybrid RAG сервис поверх CSV парсера: chunking, BM25, FAISS, streaming-ответы через Ollama.
 - `main/scripts/datasets` - единое CSV-хранилище Tradematic.
 
 Полный сценарий одной командой:
@@ -15,7 +16,7 @@ make install
 make pipeline LIMIT=20
 ```
 
-`make install` создает один общий корневой `.venv` для всего монолита Tradematic: Django-приложения, `services/news_aggregator` и `services/market_event_engine`. Сервисные пакеты подключены через группу зависимостей `services` в `pyproject.toml` как editable path-зависимости, поэтому отдельные `.venv` внутри сервисов больше не нужны.
+`make install` создает один общий корневой `.venv` для всего монолита Tradematic: Django-приложения, `services/news_aggregator`, `services/market_event_engine` и `services/ragpipe`. Сервисные пакеты подключены через группу зависимостей `services` в `pyproject.toml` как editable path-зависимости, поэтому отдельные `.venv` внутри сервисов больше не нужны.
 
 Для локального запуска интерфейса:
 
@@ -66,7 +67,7 @@ news_aggregator collect
 
 `rag_training.jsonl` - это выгрузка обучающих примеров из CSV. Локальная Ollama не дообучает веса модели этим файлом напрямую, поэтому рабочая реализация сделана как RAG: новости индексируются, релевантный контекст подается в локальную модель `tradematic-analyst`, а результат сохраняется как анализ по каждому активу.
 
-Встроенный `ragpipe` больше не является отдельным проектом. Его логика перенесена в EDMI и запускается из общего Tradematic-окружения. Он строится напрямую на CSV парсера новостей: CSV читается построчно, тексты режутся на чанки, затем создаются BM25 и FAISS индексы. Это быстрый hybrid RAG для интерактивных вопросов и streaming-ответов.
+Встроенный `ragpipe` больше не является отдельным проектом. Его логика перенесена в `services/ragpipe` и запускается из общего Tradematic-окружения. Он строится напрямую на CSV парсера новостей: CSV читается построчно, тексты режутся на чанки, затем создаются BM25 и FAISS индексы. Это быстрый hybrid RAG для интерактивных вопросов и streaming-ответов. EDMI API использует `services/ragpipe` как соседний сервисный пакет.
 
 ## Файлы результата pipeline
 

@@ -499,14 +499,13 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "redis" },
+    { name = "tradematic-ragpipe" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
 ml = [
-    { name = "faiss-cpu" },
     { name = "natasha" },
-    { name = "rank-bm25" },
     { name = "scikit-learn" },
     { name = "sentence-transformers" },
     { name = "spacy" },
@@ -519,7 +518,6 @@ postgres = [
 requires-dist = [
     { name = "arq", specifier = ">=0.26.1" },
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.29.0" },
-    { name = "faiss-cpu", marker = "extra == 'ml'", specifier = ">=1.7.4" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "natasha", marker = "extra == 'ml'", specifier = ">=1.6.0" },
@@ -527,11 +525,11 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
-    { name = "rank-bm25", marker = "extra == 'ml'", specifier = ">=0.2.2" },
     { name = "redis", specifier = ">=5.0.0" },
     { name = "scikit-learn", marker = "extra == 'ml'", specifier = ">=1.5.0" },
     { name = "sentence-transformers", marker = "extra == 'ml'", specifier = ">=3.0.0" },
     { name = "spacy", marker = "extra == 'ml'", specifier = ">=3.7.0" },
+    { name = "tradematic-ragpipe" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
 ]
 provides-extras = ["ml", "postgres", "dev"]
@@ -2349,6 +2347,7 @@ dev = [
 services = [
     { name = "event-driven-market-intelligence", extra = ["ml", "postgres"] },
     { name = "news-aggregator" },
+    { name = "tradematic-ragpipe" },
 ]
 
 [package.metadata]
@@ -2375,6 +2374,26 @@ dev = [
 services = [
     { name = "event-driven-market-intelligence", extras = ["ml", "postgres"], editable = "services/market_event_engine" },
     { name = "news-aggregator", editable = "services/news_aggregator" },
+    { name = "tradematic-ragpipe", editable = "services/ragpipe" },
+]
+
+[[package]]
+name = "tradematic-ragpipe"
+version = "0.1.0"
+source = { editable = "services/ragpipe" }
+dependencies = [
+    { name = "faiss-cpu" },
+    { name = "httpx" },
+    { name = "rank-bm25" },
+    { name = "sentence-transformers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "faiss-cpu", specifier = ">=1.7.4" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "rank-bm25", specifier = ">=0.2.2" },
+    { name = "sentence-transformers", specifier = ">=3.0.0" },
 ]
 
 [[package]]

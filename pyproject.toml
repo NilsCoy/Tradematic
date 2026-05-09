@@ -27,11 +27,13 @@ dev = [
 services = [
     "event-driven-market-intelligence[ml,postgres]",
     "news-aggregator",
+    "tradematic-ragpipe",
 ]
 
 [tool.uv.sources]
 event-driven-market-intelligence = { path = "services/market_event_engine", editable = true }
 news-aggregator = { path = "services/news_aggregator", editable = true }
+tradematic-ragpipe = { path = "services/ragpipe", editable = true }
 tinkoff = { url = "https://files.pythonhosted.org/packages/99/b6/0abbb6570ab7f8623a55ed9d8e2c05594d7944ecc0b335a89addfb8f40e1/tinkoff-0.1.1-py3-none-any.whl" }
 tinkoff-investments = { url = "https://files.pythonhosted.org/packages/e7/94/b2afafb602ba54d5dbfa72a1a2473575481c457033ea69f0cdadde404878/tinkoff_investments-0.2.0b117-py3-none-any.whl" }
 

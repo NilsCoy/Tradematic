@@ -19,8 +19,8 @@ from edmi.application.factory import get_repository, make_pipeline
 from edmi.application.pipeline import DuplicateNewsError
 from edmi.config import get_settings
 from edmi.integration.news_pipeline import IntegratedNewsPipeline, ingest_csv_path
-from edmi.rag.ragpipe import ask_ragpipe, build_ragpipe_index, default_index_dir, query_ragpipe, stream_ragpipe_answer
 from edmi.services.market_data import MarketDataService
+from tradematic_ragpipe import ask_ragpipe, build_ragpipe_index, default_index_dir, query_ragpipe, stream_ragpipe_answer
 
 
 RAGPIPE_TOP_K_QUERY = Query(default=6, ge=1, le=20)

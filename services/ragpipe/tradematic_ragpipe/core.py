@@ -5,7 +5,9 @@ import asyncio
 import csv
 import hashlib
 import json
+import os
 import pickle
+import random
 import re
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
@@ -13,10 +15,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
-from edmi.config import get_settings
-from edmi.services.embedding import EmbeddingService
-from edmi.services.vector import cosine_similarity
 
 
 DEFAULT_MODEL = "tradematic-analyst"
@@ -67,6 +65,49 @@ SYSTEM_PROMPT = """
 
 Отвечай на русском языке, кратко и по делу.
 """.strip()
+
+
+@dataclass(frozen=True)
+class RagpipeSettings:
+    ollama_url: str = "http://localhost:11434"
+    tradematic_datasets_dir: Path = Path("main/scripts/datasets")
+    embedding_model: str = "intfloat/multilingual-e5-base"
+    embedding_local_files_only: bool = True
+
+
+class EmbeddingService:
+    def __init__(self, settings: RagpipeSettings) -> None:
+        self.settings = settings
+        self._model = None
+
+    async def embed(self, text: str) -> list[float]:
+        model = self._load_model()
+        if model is None:
+            return self._stable_embedding(text)
+        vector = model.encode([f"query: {text}"], normalize_embeddings=True)[0]
+        return [float(value) for value in vector]
+
+    def _load_model(self):
+        if self._model is not None:
+            return self._model
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            return None
+        try:
+            self._model = SentenceTransformer(
+                self.settings.embedding_model,
+                local_files_only=self.settings.embedding_local_files_only,
+            )
+        except Exception:
+            return None
+        return self._model
+
+    @staticmethod
+    def _stable_embedding(text: str, dimensions: int = 768) -> list[float]:
+        seed = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big")
+        rng = random.Random(seed)
+        return [rng.uniform(-1.0, 1.0) for _ in range(dimensions)]
 
 
 @dataclass(frozen=True)
@@ -394,6 +435,17 @@ def _normalize(value: float, max_value: float) -> float:
     return value / max_value
 
 
+def cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    numerator = sum(a * b for a, b in zip(left, right))
+    left_norm = sum(a * a for a in left) ** 0.5
+    right_norm = sum(b * b for b in right) ** 0.5
+    if left_norm == 0.0 or right_norm == 0.0:
+        return 0.0
+    return numerator / (left_norm * right_norm)
+
+
 def _match_payload(score: float, document: RagDocument) -> dict[str, Any]:
     return {
         "score": round(float(score), 6),
@@ -475,8 +527,18 @@ def _append_memory(path: Path, question: str, answer: str, matches: list[dict[st
 
 def default_index_dir() -> Path:
     settings = get_settings()
-    base_dir = settings.tradematic_datasets_dir or Path("main/scripts/datasets")
-    return base_dir / "ragpipe"
+    return settings.tradematic_datasets_dir / "ragpipe"
+
+
+def get_settings() -> RagpipeSettings:
+    datasets_dir = os.environ.get("EDMI_TRADEMATIC_DATASETS_DIR", "main/scripts/datasets")
+    local_files_only = os.environ.get("EDMI_EMBEDDING_LOCAL_FILES_ONLY", "true").lower()
+    return RagpipeSettings(
+        ollama_url=os.environ.get("EDMI_OLLAMA_URL", "http://localhost:11434"),
+        tradematic_datasets_dir=Path(datasets_dir),
+        embedding_model=os.environ.get("EDMI_EMBEDDING_MODEL", "intfloat/multilingual-e5-base"),
+        embedding_local_files_only=local_files_only in {"1", "true", "yes", "on"},
+    )
 
 
 async def _build(args: argparse.Namespace) -> None:
