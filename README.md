@@ -121,7 +121,7 @@ news_aggregator collect
 
 `rag_training.jsonl` - это выгрузка обучающих примеров из CSV. Локальная Ollama не дообучает веса модели этим файлом напрямую, поэтому рабочая реализация сделана как RAG: новости индексируются, релевантный контекст подается в локальную модель `tradematic-analyst`, а результат сохраняется как анализ по каждому активу.
 
-Встроенный `ragpipe` больше не является отдельным проектом. Его логика перенесена в `services/ragpipe` и запускается из общего Tradematic-окружения. Он строится напрямую на CSV парсера новостей: CSV читается построчно, тексты режутся на чанки, затем создаются BM25 и FAISS индексы. Это быстрый hybrid RAG для интерактивных вопросов и streaming-ответов. EDMI API использует `services/ragpipe` как соседний сервисный пакет.
+Встроенный `ragpipe` больше не является отдельным проектом. Его логика перенесена в `services/ragpipe` и запускается из общего Tradematic-окружения. Он строится напрямую на CSV парсера новостей: CSV читается построчно, тексты режутся на чанки, embeddings создаются через Ollama `nomic-embed-text`, затем сохраняются FAISS, BM25, Chroma и memory. Вопросы проходят через multi-query retrieval, hybrid search, rerank-слой и LLM. CrossEncoder rerank выключен по умолчанию из-за возможного OpenMP-конфликта в локальных окружениях; включается через `RAGPIPE_ENABLE_RERANK=true`.
 
 ## Файлы результата pipeline
 
@@ -138,7 +138,9 @@ news_aggregator collect
 | `main/scripts/datasets/ragpipe/ragpipe_docs.jsonl` | Чанки исходных новостей из CSV парсера с метаданными и embedding-векторами для hybrid RAG. |
 | `main/scripts/datasets/ragpipe/ragpipe_bm25.pkl` | BM25 индекс для лексического поиска по новостям. |
 | `main/scripts/datasets/ragpipe/ragpipe_faiss.index` | FAISS индекс для векторного поиска по тем же чанкам. |
-| `main/scripts/datasets/ragpipe/ragpipe_memory.jsonl` | История вопросов и ответов hybrid RAG. Заполняется при `ragpipe-chat` и streaming-запросах. |
+| `main/scripts/datasets/ragpipe/ragpipe_faiss_docs.pkl` | Метаданные документов, соответствующие FAISS-векторам. |
+| `main/scripts/datasets/ragpipe/chroma_db/` | Persistent ChromaDB коллекция `finance` для дополнительного vector retrieval. |
+| `main/scripts/datasets/ragpipe/ragpipe_memory.json` | Долговременная память ragpipe: чанки новостей и история ответов. |
 | `main/scripts/datasets/Modelfile.tradematic-analyst` | Modelfile для создания локальной Ollama-обертки `tradematic-analyst` поверх базовой модели, по умолчанию `llama3.1`. |
 | `main/scripts/datasets/asset_analysis.json` | Машиночитаемый итоговый анализ по активам из `ASSETS`, `ASSETS_FILE` или автоматического `main/scripts/datasets/assets.txt`. Каждый актив оценивается по всему новостному фону из RAG. |
 | `main/scripts/datasets/asset_analysis.md` | Человекочитаемый итоговый отчет по активам. Это основной файл, который стоит открывать после завершения pipeline. |

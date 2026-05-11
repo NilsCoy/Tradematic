@@ -146,7 +146,8 @@ services:
     image: ollama/ollama:latest
     environment:
       OLLAMA_HOST: http://ollama:11434
-    command: ["pull", "llama3.1"]
+    entrypoint: ["sh", "-c"]
+    command: ["ollama pull llama3.1 && ollama pull nomic-embed-text"]
     depends_on:
       ollama:
         condition: service_healthy

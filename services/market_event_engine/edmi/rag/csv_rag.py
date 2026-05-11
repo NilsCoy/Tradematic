@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import csv
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -111,7 +112,18 @@ DEFAULT_SYSTEM_PROMPT = """
 """.strip()
 
 
+def configure_csv_field_limit() -> None:
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 10
+
+
 async def build_index(input_csv: Path, output_csv: Path, training_jsonl: Path | None = None) -> dict:
+    configure_csv_field_limit()
     settings = get_settings()
     embeddings = EmbeddingService(settings)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -184,6 +196,7 @@ async def build_index(input_csv: Path, output_csv: Path, training_jsonl: Path | 
 
 
 async def query_index(index_csv: Path, question: str, top_k: int = 5) -> dict:
+    configure_csv_field_limit()
     settings = get_settings()
     embeddings = EmbeddingService(settings)
     query_vector = await embeddings.embed(question)
@@ -216,6 +229,29 @@ async def analyze_assets(
     top_k: int = 8,
 ) -> dict:
     rows = _read_index(index_csv)
+    if not rows:
+        output_json.parent.mkdir(parents=True, exist_ok=True)
+        output_md.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "index_csv": str(index_csv),
+            "model": model,
+            "assets": assets or [MARKET_ASSET],
+            "analyses": [],
+            "status": "empty_index",
+            "message": "RAG index is empty; analysis skipped.",
+        }
+        output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        output_md.write_text("Нет обработанных событий для анализа.\n", encoding="utf-8")
+        return {
+            "index_csv": str(index_csv),
+            "output_json": str(output_json),
+            "output_md": str(output_md),
+            "model": model,
+            "assets": payload["assets"],
+            "analyses": 0,
+            "status": "empty_index",
+        }
+
     available_assets = _available_assets(rows)
     target_assets = assets or available_assets
     if not target_assets:
@@ -229,8 +265,11 @@ async def analyze_assets(
     analyses = []
     for asset in target_assets:
         matches = _top_asset_rows(rows, asset, top_k)
-        prompt = _analysis_prompt(asset, matches)
-        answer = await _ollama_generate(base_url, model, prompt)
+        if matches:
+            prompt = _analysis_prompt(asset, matches)
+            answer = await _ollama_generate(base_url, model, prompt)
+        else:
+            answer = "Нет релевантных документов в RAG-индексе; анализ LLM пропущен."
         analyses.append(
             {
                 "asset": asset,
@@ -278,15 +317,37 @@ async def brief_market(
     top_k: int = 10,
 ) -> dict:
     rows = _latest_rows(_read_index(index_csv))
-    settings = get_settings()
-    base_url = (ollama_url or settings.ollama_url).rstrip("/")
     output_json.parent.mkdir(parents=True, exist_ok=True)
     output_md.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        payload = {
+            "index_csv": str(index_csv),
+            "model": model,
+            "categories": [],
+            "status": "empty_index",
+            "message": "RAG index is empty; market brief skipped.",
+        }
+        output_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        output_md.write_text("Нет обработанных событий для рыночной сводки.\n", encoding="utf-8")
+        return {
+            "index_csv": str(index_csv),
+            "output_json": str(output_json),
+            "output_md": str(output_md),
+            "model": model,
+            "categories": 0,
+            "status": "empty_index",
+        }
+
+    settings = get_settings()
+    base_url = (ollama_url or settings.ollama_url).rstrip("/")
 
     async def run_category(category: dict) -> dict:
         selected = _category_rows(rows, category["event_types"], top_k)
-        prompt = _brief_prompt(category["title"], category["focus"], selected)
-        answer = await _ollama_generate(base_url, model, prompt)
+        if selected:
+            prompt = _brief_prompt(category["title"], category["focus"], selected)
+            answer = await _ollama_generate(base_url, model, prompt)
+        else:
+            answer = "Нет релевантных документов для этой категории; LLM-сводка пропущена."
         return {
             "key": category["key"],
             "title": category["title"],
@@ -297,7 +358,9 @@ async def brief_market(
             "sources": _sources(selected),
         }
 
-    categories = await asyncio.gather(*(run_category(category) for category in BRIEF_CATEGORIES))
+    categories = []
+    for category in BRIEF_CATEGORIES:
+        categories.append(await run_category(category))
     payload = {
         "index_csv": str(index_csv),
         "model": model,
@@ -354,6 +417,7 @@ def _content(row: dict[str, str]) -> str:
 
 
 def _read_index(index_csv: Path) -> list[dict[str, str]]:
+    configure_csv_field_limit()
     with index_csv.open("r", encoding="utf-8", newline="") as file:
         return list(csv.DictReader(file))
 
@@ -386,9 +450,7 @@ def _is_noise_asset(asset: str) -> bool:
         return True
     if "." in asset:
         return True
-    if len(asset.split()) > 2:
-        return True
-    return False
+    return len(asset.split()) > 2
 
 
 def _top_asset_rows(rows: list[dict[str, str]], asset: str, top_k: int) -> list[dict[str, str]]:
@@ -464,14 +526,20 @@ RAG-контекст:
 
 
 async def _ollama_generate(base_url: str, model: str, prompt: str) -> str:
-    async with httpx.AsyncClient(timeout=180.0) as client:
-        response = await client.post(
-            f"{base_url}/api/generate",
-            json={"model": model, "prompt": prompt, "stream": False},
+    try:
+        async with httpx.AsyncClient(timeout=240.0) as client:
+            response = await client.post(
+                f"{base_url}/api/generate",
+                json={"model": model, "prompt": prompt, "stream": False},
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return str(payload.get("response", "")).strip()
+    except (httpx.HTTPError, ValueError) as exc:
+        return (
+            "LLM-сводка недоступна: "
+            f"{type(exc).__name__}. Данные сохранены в RAG-индексе, повторите анализ позже."
         )
-        response.raise_for_status()
-        payload = response.json()
-    return str(payload.get("response", "")).strip()
 
 
 def _analysis_markdown(analyses: list[dict]) -> str:
