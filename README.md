@@ -41,10 +41,11 @@ make docker-up
 - Django UI: `http://127.0.0.1:8001/`
 - EDMI API: `http://127.0.0.1:8000/health`
 - Ollama: `http://127.0.0.1:11434`
+- Ollama UI / Open WebUI: `http://127.0.0.1:3000/`
 - Postgres/pgvector: `127.0.0.1:5432`
 - Redis: `127.0.0.1:6379`
 
-Первый запуск скачивает образы Postgres/Redis/Ollama и модель `llama3.1`, поэтому может занять заметное время. Повторные запуски используют Docker cache и volume `ollama_data`.
+Первый запуск скачивает образы Postgres/Redis/Ollama/Open WebUI и модель `llama3.1`, поэтому может занять заметное время. Повторные запуски используют Docker cache и volumes `ollama_data`, `open_webui_data`.
 
 Запустить весь pipeline в контейнерах:
 

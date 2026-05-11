@@ -60,7 +60,7 @@ help:
 	@printf "  make rag-query QUESTION='...' Query the built RAG index\n"
 	@printf "  make ragpipe-stream QUESTION='...' Stream hybrid RAG answer from Ollama\n"
 	@printf "  make ollama-check            Verify local llama3.1\n"
-	@printf "  make docker-up               Build and run web/API/Redis/Postgres/Ollama\n"
+	@printf "  make docker-up               Build and run web/API/Redis/Postgres/Ollama UI\n"
 	@printf "  make docker-pipeline LIMIT=5 Run one Docker pipeline iteration\n"
 	@printf "  make docker-pipeline-existing LIMIT=5\n"
 	@printf "                               Run Docker EDMI/RAG pipeline from current parser CSV\n"
@@ -243,7 +243,7 @@ docker-build:
 	docker compose build
 
 docker-up:
-	docker compose up -d --build web edmi-api redis postgres ollama ollama-init
+	docker compose up -d --build web edmi-api redis postgres ollama ollama-init ollama-ui
 
 docker-pipeline:
 	PIPELINE_LIMIT=$(LIMIT) docker compose --profile pipeline up --build pipeline
