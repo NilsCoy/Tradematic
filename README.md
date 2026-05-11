@@ -80,6 +80,8 @@ make docker-logs
 make docker-down
 ```
 
+Сборщик новостей устойчив к коротким сетевым сбоям: HTTP-запросы ретраятся с экспоненциальной паузой, а зависшие статьи, переводы и источники ограничены таймаутами. В Docker эти параметры задаются в `.env.docker` через `NEWS_REQUEST_RETRY_ATTEMPTS`, `NEWS_REQUEST_TIMEOUT`, `NEWS_ARTICLE_PARSE_TIMEOUT`, `NEWS_SOURCE_COLLECTION_TIMEOUT`, `NEWS_TRANSLATION_TIMEOUT`.
+
 Если нужен контролируемый universe активов, используйте файл, чтобы не упереться в длину командной строки:
 
 ```bash

@@ -6,7 +6,15 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from app.config import CSV_PATH, REQUEST_TIMEOUT, SOURCE_FETCH_CONCURRENCY, USER_AGENT
+from app.config import (
+    COLLECTOR_QUEUE_IDLE_TIMEOUT,
+    CSV_PATH,
+    CURRENCY_COLLECTION_TIMEOUT,
+    REQUEST_TIMEOUT,
+    SOURCE_COLLECTION_TIMEOUT,
+    SOURCE_FETCH_CONCURRENCY,
+    USER_AGENT,
+)
 from app.logging import logger
 from app.sources.cbr import CbrCurrencyCollector
 from app.sources.news import build_news_collectors
@@ -55,32 +63,51 @@ class NewsAggregationService:
                 {"source": self.currency_collector.source_name, "message": "Обновляю курсы ЦБ"},
             )
 
-            async for event in self.currency_collector.stream_collect(client):
-                if event["event"] == "record":
-                    currency_records.append(event["record"])
-                    currency_logger.bind(title=event["record"].title).debug(
-                        "Currency record collected"
-                    )
+            try:
+                currency_events = await asyncio.wait_for(
+                    self._collect_currency_events(client),
+                    timeout=CURRENCY_COLLECTION_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                message = (
+                    f"Таймаут валютного источника после {CURRENCY_COLLECTION_TIMEOUT:g} секунд"
+                )
+                currency_errors.append(message)
+                currency_logger.warning(message)
+                yield self._sse(
+                    "error",
+                    {
+                        "source": self.currency_collector.source_name,
+                        "message": message,
+                    },
+                )
+            else:
+                for event in currency_events:
+                    if event["event"] == "record":
+                        currency_records.append(event["record"])
+                        currency_logger.bind(title=event["record"].title).debug(
+                            "Currency record collected"
+                        )
 
-                    yield self._sse(
-                        "record",
-                        {
-                            "source": self.currency_collector.source_name,
-                            "title": event["record"].title,
-                            "url": event["record"].url,
-                        },
-                    )
-                else:
-                    currency_errors.append(event["message"])
-                    currency_logger.bind(event=event["event"]).warning(event["message"])
+                        yield self._sse(
+                            "record",
+                            {
+                                "source": self.currency_collector.source_name,
+                                "title": event["record"].title,
+                                "url": event["record"].url,
+                            },
+                        )
+                    else:
+                        currency_errors.append(event["message"])
+                        currency_logger.bind(event=event["event"]).warning(event["message"])
 
-                    yield self._sse(
-                        event["event"],
-                        {
-                            "source": self.currency_collector.source_name,
-                            "message": event["message"],
-                        },
-                    )
+                        yield self._sse(
+                            event["event"],
+                            {
+                                "source": self.currency_collector.source_name,
+                                "message": event["message"],
+                            },
+                        )
 
             if currency_records:
                 replaced = self.repository.replace_source(
@@ -198,6 +225,12 @@ class NewsAggregationService:
 
         return preview
 
+    async def _collect_currency_events(self, client: httpx.AsyncClient) -> list[dict]:
+        events: list[dict] = []
+        async for event in self.currency_collector.stream_collect(client):
+            events.append(event)
+        return events
+
     def _sse(self, event: str, payload: dict) -> str:
         self.logger.bind(operation="sse", event=event).debug("Encoding SSE event")
 
@@ -217,7 +250,25 @@ class NewsAggregationService:
         completed = 0
 
         while completed < len(tasks):
-            item = await queue.get()
+            try:
+                item = await asyncio.wait_for(
+                    queue.get(),
+                    timeout=COLLECTOR_QUEUE_IDLE_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                failed_tasks = [task for task in tasks if task.done() and task.exception()]
+                for task in failed_tasks:
+                    stream_logger.bind(error=repr(task.exception())).warning(
+                        "Collector task finished without queue result"
+                    )
+                if all(task.done() for task in tasks):
+                    break
+                stream_logger.bind(
+                    completed=completed,
+                    total=len(tasks),
+                ).debug("Waiting for source collectors")
+                continue
+
             if item["kind"] == "event":
                 yield item["payload"]
                 continue
@@ -249,7 +300,10 @@ class NewsAggregationService:
                     },
                 }
 
-        await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                stream_logger.bind(error=repr(result)).warning("Collector task failed")
 
     async def _run_news_collector(
         self,
@@ -262,64 +316,110 @@ class NewsAggregationService:
         errors: list[str] = []
         collector_logger = self.logger.bind(operation="source_runner", source=collector.source_name)
 
-        async with semaphore:
-            collector_logger.info("Starting collector")
+        try:
+            async with semaphore:
+                collector_logger.info("Starting collector")
+                await queue.put(
+                    {
+                        "kind": "event",
+                        "payload": {
+                            "event": "status",
+                            "payload": {
+                                "source": collector.source_name,
+                                "message": "Начинаю сбор",
+                            },
+                        },
+                    }
+                )
+                await asyncio.wait_for(
+                    self._drain_news_collector(collector, client, queue, records, errors),
+                    timeout=SOURCE_COLLECTION_TIMEOUT,
+                )
+        except asyncio.TimeoutError:
+            message = (
+                f"Таймаут источника после {SOURCE_COLLECTION_TIMEOUT:g} секунд, "
+                "сохраню уже собранные статьи и продолжу"
+            )
+            errors.append(message)
+            collector_logger.warning(message)
             await queue.put(
                 {
                     "kind": "event",
                     "payload": {
-                        "event": "status",
-                        "payload": {"source": collector.source_name, "message": "Начинаю сбор"},
+                        "event": "error",
+                        "payload": {"source": collector.source_name, "message": message},
+                    },
+                }
+            )
+        except Exception as exc:
+            message = f"Ошибка источника: {type(exc).__name__}: {exc}"
+            errors.append(message)
+            collector_logger.exception("Collector failed")
+            await queue.put(
+                {
+                    "kind": "event",
+                    "payload": {
+                        "event": "error",
+                        "payload": {"source": collector.source_name, "message": message},
+                    },
+                }
+            )
+        finally:
+            await queue.put(
+                {
+                    "kind": "result",
+                    "payload": {
+                        "source": collector.source_name,
+                        "records": records,
+                        "errors": errors,
                     },
                 }
             )
 
-            async for event in collector.stream_collect(client):
-                if event["event"] == "record":
-                    records.append(event["record"])
-                    collector_logger.bind(url=event["record"].url).debug("Record collected")
-                    await queue.put(
-                        {
-                            "kind": "event",
+    async def _drain_news_collector(
+        self,
+        collector,
+        client: httpx.AsyncClient,
+        queue: asyncio.Queue,
+        records: list,
+        errors: list[str],
+    ) -> None:
+        collector_logger = self.logger.bind(operation="source_runner", source=collector.source_name)
+        async for event in collector.stream_collect(client):
+            if event["event"] == "record":
+                records.append(event["record"])
+                collector_logger.bind(url=event["record"].url).debug("Record collected")
+                await queue.put(
+                    {
+                        "kind": "event",
+                        "payload": {
+                            "event": "record",
                             "payload": {
-                                "event": "record",
-                                "payload": {
-                                    "source": collector.source_name,
-                                    "title": event["record"].title,
-                                    "url": event["record"].url,
-                                },
+                                "source": collector.source_name,
+                                "title": event["record"].title,
+                                "url": event["record"].url,
                             },
-                        }
-                    )
+                        },
+                    }
+                )
+            else:
+                if event["event"] == "error":
+                    errors.append(event["message"])
+                    collector_logger.bind(event=event["event"]).warning(event["message"])
                 else:
-                    if event["event"] == "error":
-                        errors.append(event["message"])
-                        collector_logger.bind(event=event["event"]).warning(event["message"])
-                    else:
-                        collector_logger.bind(event=event["event"]).info(event["message"])
-                    await queue.put(
-                        {
-                            "kind": "event",
+                    collector_logger.bind(event=event["event"]).info(event["message"])
+                await queue.put(
+                    {
+                        "kind": "event",
+                        "payload": {
+                            "event": event["event"],
                             "payload": {
-                                "event": event["event"],
-                                "payload": {
-                                    "source": collector.source_name,
-                                    "message": event["message"],
-                                },
+                                "source": collector.source_name,
+                                "message": event["message"],
                             },
-                        }
-                    )
-
-        await queue.put(
-            {
-                "kind": "result",
-                "payload": {
-                    "source": collector.source_name,
-                    "records": records,
-                    "errors": errors,
-                },
-            }
-        )
+                        },
+                    }
+                )
 
     def _parse_sse(self, raw_event: str) -> dict:
         event_name = ""
