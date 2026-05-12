@@ -130,34 +130,41 @@ def get_account(token):
 def get_elements_in_portfolio(token):
     """Получает данные по списку портфеля."""
     with get_client(token) as client:
-        portfolio = client.operations.get_portfolio(account_id=get_account(token).accounts[0].id)
-        a = []
+        portfolio = client.operations.get_portfolio(
+            account_id=get_account(token).accounts[0].id
+        )
+
+        result = []
+
         for position in portfolio.positions:
-            item = {}
+            quantity = (
+                position.quantity.units +
+                position.quantity.nano / 1e9
+            )
 
-            pos_type = position.instrument_type
-            figi = position.figi
-            quantity = position.quantity.units + position.quantity.nano / 1e9
-            average_price = position.average_position_price
-            current_price = position.current_price
+            avg_price = (
+                position.average_position_price.units +
+                position.average_position_price.nano / 1e9
+            )
 
-            if average_price:
-                avg_price = average_price.units + average_price.nano / 1e9
-            if current_price:
-                cur_price = current_price.units + current_price.nano / 1e9
+            cur_price = (
+                position.current_price.units +
+                position.current_price.nano / 1e9
+            )
 
-            item['name'] = get_name_stock(token, figi)
-            item['figi'] = figi
-            item['quantity'] = quantity
-            item['avg_price'] = avg_price
-            item['cur_price'] = cur_price
-            item['instrument_type'] = pos_type
+            item = {
+                "name": get_name_stock(token, position.figi),
+                "figi": position.figi,
+                "quantity": quantity,
+                "avg_price": avg_price,
+                "cur_price": cur_price,
+                "instrument_type": position.instrument_type,
+                "metrics": calculate_metrics(position)
+            }
 
-            item['metrics'] = calculate_metrics(token, figi)
+            result.append(item)
 
-            a.append(item)
-
-        return a
+        return result
 
 
 def get_name_stock(token, figi):
@@ -167,8 +174,6 @@ def get_name_stock(token, figi):
         if instrument.instrument:
             return instrument.instrument.name
     return None
-
-
 
 def candles_to_df(candles):
     df = pd.DataFrame([{
@@ -273,50 +278,55 @@ def get_current_prices(client, figis):
 def q_to_float(q):
     return q.units + q.nano / 1e9
 
-def calculate_metrics(token, figi):
-    ops = get_last_operations(token)
+def calculate_metrics(position):
+    quantity = position.quantity.units + position.quantity.nano / 1e9
 
-    if not ops:
-        return None
+    avg_price_q = position.average_position_price
+    cur_price_q = position.current_price
 
-    buy_op = ops[0]
+    avg_price = avg_price_q.units + avg_price_q.nano / 1e9
+    cur_price = cur_price_q.units + cur_price_q.nano / 1e9
 
-    with get_client(token) as client:
-        prices = get_current_prices(client, [figi])
+    invested = avg_price * quantity
+    current_value = cur_price * quantity
 
-    buy_price = q_to_float(buy_op.price)
-    current_price = prices.get(figi, 0)
-
-    # quantity тоже Quotation → нормализуем
-    qty = buy_op.quantity
-
-    invested = buy_price * qty
-    current_value = current_price * qty
     profit = current_value - invested
 
-    yield_pct = (profit / invested * 100) if invested > 0 else 0
-
-    # безопасная работа с датой (timezone-aware)
-    now = datetime.now(timezone.utc)
-    buy_time = buy_op.date
-
-    if buy_time.tzinfo is None:
-        buy_time = buy_time.replace(tzinfo=timezone.utc)
-
-    days = (now - buy_time).days
+    yield_pct = (profit / invested * 100) if invested else 0
 
     return {
-        "figi": figi,
-        "quantity": qty,
-        "buy_price": buy_price,
-        "current_price": current_price,
-        "invested": invested,
-        "current_value": current_value,
-        "profit": profit,
-        "yield_pct": yield_pct,
-        "days_held": days
+        "figi": position.figi,
+        "quantity": quantity,
+        "buy_price": round(avg_price, 2),
+        "current_price": round(cur_price, 2),
+        "invested": round(invested, 2),
+        "current_value": round(current_value, 2),
+        "profit": round(profit, 2),
+        "yield_pct": round(yield_pct, 2),
     }
 
+def build_portfolio_distribution_chart(portfolio):
+    labels = []
+    values = []
+
+    total = sum(
+        stock["metrics"]["current_value"]
+        for stock in portfolio["stocks"]
+    )
+
+    for stock in portfolio["stocks"]:
+        value = stock["metrics"]["current_value"]
+
+        if value <= 0:
+            continue
+
+        labels.append(stock["name"])
+        values.append(round(value / total * 100, 2))
+
+    return {
+        "labels": labels,
+        "values": values
+    }
 
 from cryptography.fernet import Fernet
 from django.conf import settings

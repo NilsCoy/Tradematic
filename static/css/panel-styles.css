@@ -228,6 +228,19 @@ h6 {
   font-weight: 400;
 }
 
+.analize-container {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+}
+
+.portfolio .container {
+  border-radius: 5px;
+  background-color: #151515;
+  padding: 20px;
+  margin: 20px;
+}
+
 h1 {
   margin-bottom: 20px;
 }
