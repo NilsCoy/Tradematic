@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -16,11 +17,14 @@ from httpx import AsyncClient
 from app.chunking import split_text_to_chunks
 from app.config import (
     ARTICLE_FETCH_CONCURRENCY,
+    ARTICLE_PARSE_TIMEOUT,
     MIN_ARTICLE_WORDS,
     NEWS_SOURCES,
     REQUEST_RETRY_ATTEMPTS,
     REQUEST_RETRY_BASE_DELAY,
+    REQUEST_RETRY_JITTER,
     REQUEST_RETRY_MAX_DELAY,
+    TRANSLATION_TIMEOUT,
 )
 from app.logging import logger
 from app.models import NewsRecord
@@ -172,11 +176,16 @@ class HtmlNewsCollector(SourceCollector):
             for candidate in article_candidates
         ]
 
-        for task in asyncio.as_completed(tasks):
-            event = await task
-            if event is None:
-                continue
-            yield event
+        try:
+            for task in asyncio.as_completed(tasks):
+                event = await task
+                if event is None:
+                    continue
+                yield event
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
 
     async def _parse_candidate_safely(
         self,
@@ -187,9 +196,31 @@ class HtmlNewsCollector(SourceCollector):
         article_logger = self.logger.bind(article_url=candidate.url)
         async with semaphore:
             try:
-                record = await self._parse_article(client, candidate)
+                record = await asyncio.wait_for(
+                    self._parse_article(client, candidate),
+                    timeout=ARTICLE_PARSE_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                fallback = await self._record_from_candidate(candidate)
+                if fallback is not None:
+                    article_logger.bind(title=fallback.title).warning(
+                        "Article parsing timed out, RSS summary fallback kept"
+                    )
+                    return {
+                        "event": "record",
+                        "record": fallback,
+                        "source": self.source_name,
+                        "message": f"Добавлена RSS-запись: {fallback.title}",
+                    }
+                error_message = f"TimeoutError: article parsing exceeded {ARTICLE_PARSE_TIMEOUT}s"
+                article_logger.warning(error_message)
+                return {
+                    "event": "error",
+                    "message": f"Таймаут статьи {candidate.url}: {error_message}",
+                    "source": self.source_name,
+                }
             except Exception as exc:
-                fallback = self._record_from_candidate(candidate)
+                fallback = await self._record_from_candidate(candidate)
                 if fallback is not None:
                     article_logger.bind(
                         title=fallback.title,
@@ -228,7 +259,7 @@ class HtmlNewsCollector(SourceCollector):
             "message": f"Добавлена статья: {record.title}",
         }
 
-    def _record_from_candidate(self, candidate: ArticleCandidate) -> NewsRecord | None:
+    async def _record_from_candidate(self, candidate: ArticleCandidate) -> NewsRecord | None:
         if not self.source.allow_rss_content_fallback:
             return None
 
@@ -238,8 +269,8 @@ class HtmlNewsCollector(SourceCollector):
             return None
 
         if self.source.translate_to_russian:
-            title = translator.translate_text(title, self.source_name)
-            text = translator.translate_text(text, self.source_name)
+            title = await self._translate_text(title)
+            text = await self._translate_text(text)
 
         if word_count(text) < self.source.min_article_words:
             return None
@@ -342,13 +373,14 @@ class HtmlNewsCollector(SourceCollector):
                     REQUEST_RETRY_BASE_DELAY * (2 ** (attempt - 1)),
                     REQUEST_RETRY_MAX_DELAY,
                 )
+                jitter = random.uniform(0, min(REQUEST_RETRY_JITTER, delay * 0.25))
                 request_logger.bind(
                     attempt=attempt,
                     attempts_total=REQUEST_RETRY_ATTEMPTS,
-                    delay_seconds=delay,
+                    delay_seconds=delay + jitter,
                     error=format_exception_message(exc),
                 ).debug("Transient request failed, retrying")
-                await asyncio.sleep(delay)
+                await asyncio.sleep(delay + jitter)
 
         if last_exc is not None:
             raise last_exc
@@ -487,8 +519,8 @@ class HtmlNewsCollector(SourceCollector):
 
         if self.source.translate_to_russian:
             article_logger.info("Translating article content to Russian")
-            title = translator.translate_text(title, self.source_name)
-            text = translator.translate_text(text, self.source_name)
+            title = await self._translate_text(title)
+            text = await self._translate_text(text)
 
         words_total = word_count(text)
         if words_total < self.source.min_article_words:
@@ -514,6 +546,18 @@ class HtmlNewsCollector(SourceCollector):
             loaded_at=loaded_at,
             published_at=published_at,
         )
+
+    async def _translate_text(self, text: str) -> str:
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(translator.translate_text, text, self.source_name),
+                timeout=TRANSLATION_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            self.logger.bind(timeout=TRANSLATION_TIMEOUT).warning(
+                "Translation timed out, original text kept"
+            )
+            return text
 
     def _extract_title(self, soup: BeautifulSoup) -> str:
         selectors = [

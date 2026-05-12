@@ -1,15 +1,42 @@
+import os
 from pathlib import Path
+
+
+def _env_float(name: str, default: float) -> float:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        return float(raw_value)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        return int(raw_value)
+    except ValueError:
+        return default
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 CSV_PATH = DATA_DIR / "news_dataset.csv"
 
-REQUEST_TIMEOUT = 30.0
-REQUEST_RETRY_ATTEMPTS = 3
-REQUEST_RETRY_BASE_DELAY = 0.75
-REQUEST_RETRY_MAX_DELAY = 6.0
-ARTICLE_FETCH_CONCURRENCY = 8
-SOURCE_FETCH_CONCURRENCY = 4
+REQUEST_TIMEOUT = _env_float("NEWS_REQUEST_TIMEOUT", 30.0)
+REQUEST_RETRY_ATTEMPTS = _env_int("NEWS_REQUEST_RETRY_ATTEMPTS", 3)
+REQUEST_RETRY_BASE_DELAY = _env_float("NEWS_REQUEST_RETRY_BASE_DELAY", 0.75)
+REQUEST_RETRY_MAX_DELAY = _env_float("NEWS_REQUEST_RETRY_MAX_DELAY", 6.0)
+REQUEST_RETRY_JITTER = _env_float("NEWS_REQUEST_RETRY_JITTER", 0.25)
+ARTICLE_FETCH_CONCURRENCY = _env_int("NEWS_ARTICLE_FETCH_CONCURRENCY", 8)
+SOURCE_FETCH_CONCURRENCY = _env_int("NEWS_SOURCE_FETCH_CONCURRENCY", 4)
+ARTICLE_PARSE_TIMEOUT = _env_float("NEWS_ARTICLE_PARSE_TIMEOUT", 45.0)
+SOURCE_COLLECTION_TIMEOUT = _env_float("NEWS_SOURCE_COLLECTION_TIMEOUT", 180.0)
+CURRENCY_COLLECTION_TIMEOUT = _env_float("NEWS_CURRENCY_COLLECTION_TIMEOUT", 60.0)
+TRANSLATION_TIMEOUT = _env_float("NEWS_TRANSLATION_TIMEOUT", 20.0)
+COLLECTOR_QUEUE_IDLE_TIMEOUT = _env_float("NEWS_COLLECTOR_QUEUE_IDLE_TIMEOUT", 10.0)
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "

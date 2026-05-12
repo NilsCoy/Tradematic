@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
@@ -8,7 +9,15 @@ from datetime import datetime, timezone
 from httpx import AsyncClient
 
 from app.chunking import split_text_to_chunks
-from app.config import CBR_ENDPOINTS, CBR_ROW_URL, CBR_SOURCE, CBR_TARGET_CODES
+from app.config import (
+    CBR_ENDPOINTS,
+    CBR_ROW_URL,
+    CBR_SOURCE,
+    CBR_TARGET_CODES,
+    REQUEST_RETRY_ATTEMPTS,
+    REQUEST_RETRY_BASE_DELAY,
+    REQUEST_RETRY_MAX_DELAY,
+)
 from app.logging import logger
 from app.models import NewsRecord
 from app.sources.base import SourceCollector, SourceResult
@@ -48,7 +57,7 @@ class CbrCurrencyCollector(SourceCollector):
             collector_logger.info("Requesting CBR currency feed")
 
             try:
-                response = await client.get(endpoint_url)
+                response = await self._get_with_retry(client, endpoint_url)
                 response.raise_for_status()
                 payload = self._parse_payload(response.text, endpoint_format)
                 collector_logger.info("CBR currency feed loaded successfully")
@@ -165,3 +174,33 @@ class CbrCurrencyCollector(SourceCollector):
         except ValueError:
             date_logger.exception("Failed to parse CBR date")
             return ""
+
+    async def _get_with_retry(self, client: AsyncClient, url: str):
+        last_exc: Exception | None = None
+        for attempt in range(1, REQUEST_RETRY_ATTEMPTS + 1):
+            try:
+                response = await client.get(url)
+                if response.status_code in {408, 425, 429, 500, 502, 503, 504}:
+                    response.raise_for_status()
+                return response
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= REQUEST_RETRY_ATTEMPTS:
+                    raise
+                delay = min(
+                    REQUEST_RETRY_BASE_DELAY * (2 ** (attempt - 1)),
+                    REQUEST_RETRY_MAX_DELAY,
+                )
+                logger.bind(
+                    component="cbr",
+                    source=self.source_name,
+                    url=url,
+                    attempt=attempt,
+                    attempts_total=REQUEST_RETRY_ATTEMPTS,
+                    delay_seconds=delay,
+                    error=format_exception_message(exc),
+                ).debug("CBR request failed, retrying")
+                await asyncio.sleep(delay)
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("CBR request retry loop finished without response")

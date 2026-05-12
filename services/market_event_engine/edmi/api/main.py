@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from edmi.api.schemas import (
     CsvIngestRequest,
@@ -8,12 +11,20 @@ from edmi.api.schemas import (
     NewsAggregatorPipelineRequest,
     NewsIngestRequest,
     PortfolioAnalysisResponse,
+    RagpipeBuildRequest,
+    RagpipeChatRequest,
+    RagpipeQueryRequest,
 )
 from edmi.application.factory import get_repository, make_pipeline
 from edmi.application.pipeline import DuplicateNewsError
 from edmi.config import get_settings
 from edmi.integration.news_pipeline import IntegratedNewsPipeline, ingest_csv_path
 from edmi.services.market_data import MarketDataService
+from tradematic_ragpipe import ask_ragpipe, build_ragpipe_index, default_index_dir, query_ragpipe, stream_ragpipe_answer
+
+
+RAGPIPE_TOP_K_QUERY = Query(default=6, ge=1, le=20)
+PORTFOLIO_ASSETS_QUERY = Query(default_factory=list)
 
 
 def create_app() -> FastAPI:
@@ -65,6 +76,48 @@ def create_app() -> FastAPI:
         )
         return result.model_dump(mode="json")
 
+    @app.post("/ragpipe/build")
+    async def build_ragpipe(payload: RagpipeBuildRequest) -> dict:
+        input_path = Path(payload.input_path or settings.news_aggregator_csv_path)
+        index_dir = Path(payload.index_dir) if payload.index_dir else default_index_dir()
+        return await build_ragpipe_index(
+            input_path,
+            index_dir,
+            payload.limit,
+            payload.max_words,
+            payload.overlap,
+        )
+
+    @app.post("/ragpipe/query")
+    async def query_ragpipe_api(payload: RagpipeQueryRequest) -> dict:
+        index_dir = Path(payload.index_dir) if payload.index_dir else default_index_dir()
+        return await query_ragpipe(index_dir, payload.question, payload.top_k)
+
+    @app.post("/ragpipe/chat")
+    async def chat_ragpipe(payload: RagpipeChatRequest) -> dict:
+        index_dir = Path(payload.index_dir) if payload.index_dir else default_index_dir()
+        return await ask_ragpipe(
+            index_dir,
+            payload.question,
+            payload.model,
+            payload.top_k,
+            payload.ollama_url,
+        )
+
+    @app.get("/ragpipe/chat/stream")
+    async def stream_ragpipe(
+        question: str,
+        index_dir: str | None = None,
+        model: str = "tradematic-analyst",
+        top_k: int = RAGPIPE_TOP_K_QUERY,
+        ollama_url: str | None = None,
+    ) -> StreamingResponse:
+        resolved_index_dir = Path(index_dir) if index_dir else default_index_dir()
+        return StreamingResponse(
+            stream_ragpipe_answer(resolved_index_dir, question, model, top_k, ollama_url),
+            media_type="text/plain; charset=utf-8",
+        )
+
     @app.get("/events/{asset}", response_model=list[EventResponse])
     async def events_for_asset(asset: str) -> list[EventResponse]:
         repository = await get_repository()
@@ -84,7 +137,7 @@ def create_app() -> FastAPI:
     @app.get("/portfolio/{portfolio_id}/analysis", response_model=PortfolioAnalysisResponse)
     async def portfolio_analysis(
         portfolio_id: str,
-        assets: list[str] = Query(default_factory=list),
+        assets: list[str] = PORTFOLIO_ASSETS_QUERY,
     ) -> PortfolioAnalysisResponse:
         repository = await get_repository()
         responses: list[EventResponse] = []

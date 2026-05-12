@@ -1,13 +1,29 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure--vg%1#%0t^0hyap7xiem@c*aznq)vttypf6b)@mlssy93*fri%'
-SECRET_ENCRYPTION_KEY = 'NZoJcNOapCPXuQEhFYikhTQXWbvMBNtSysWkIpA1Kug='
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure--vg%1#%0t^0hyap7xiem@c*aznq)vttypf6b)@mlssy93*fri%',
+)
+SECRET_ENCRYPTION_KEY = os.environ.get(
+    'SECRET_ENCRYPTION_KEY',
+    'NZoJcNOapCPXuQEhFYikhTQXWbvMBNtSysWkIpA1Kug=',
+)
 
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() in {'1', 'true', 'yes', 'on'}
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,0.0.0.0,web').split(',')
+    if host.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origin.strip()
+]
 
 # Application definition
 INSTALLED_APPS = [
@@ -55,7 +71,7 @@ WSGI_APPLICATION = 'invest.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': os.environ.get('DJANGO_SQLITE_PATH', str(BASE_DIR / 'db.sqlite3')),
     }
 }
 

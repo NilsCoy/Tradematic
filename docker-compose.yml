@@ -1,0 +1,160 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["sh", "docker/web-entrypoint.sh"]
+    env_file:
+      - .env.docker
+    environment:
+      DJANGO_SQLITE_PATH: /app/data/db.sqlite3
+    ports:
+      - "8001:8001"
+    volumes:
+      - django_data:/app/data
+      - ./main/scripts/datasets:/app/main/scripts/datasets
+      - ./services/news_aggregator/data:/app/services/news_aggregator/data
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py", "http", "http://localhost:8001/"]
+      interval: 20s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  edmi-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["uvicorn", "edmi.api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    env_file:
+      - .env.docker
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./main/scripts/datasets:/app/main/scripts/datasets
+      - ./services/news_aggregator/data:/app/services/news_aggregator/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py", "http", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["sh", "docker/pipeline-entrypoint.sh"]
+    profiles: ["pipeline"]
+    env_file:
+      - .env.docker
+    environment:
+      LIMIT: ${PIPELINE_LIMIT:-5}
+      PIPELINE_MODE: ${PIPELINE_MODE:-once}
+      INTERVAL_SECONDS: ${INTERVAL_SECONDS:-900}
+    volumes:
+      - ./main/scripts/datasets:/app/main/scripts/datasets
+      - ./services/news_aggregator/data:/app/services/news_aggregator/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+
+  smoke:
+    image: tradematic-pipeline:latest
+    command: ["python", "scripts/docker_smoke.py"]
+    profiles: ["smoke"]
+    env_file:
+      - .env.docker
+    volumes:
+      - ./main/scripts/datasets:/app/main/scripts/datasets
+      - ./services/news_aggregator/data:/app/services/news_aggregator/data
+    depends_on:
+      web:
+        condition: service_healthy
+      edmi-api:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: edmi
+      POSTGRES_USER: edmi
+      POSTGRES_PASSWORD: edmi
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/market_event_engine/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edmi -d edmi"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  ollama-ui:
+    image: ghcr.io/open-webui/open-webui:main
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      RAG_EMBEDDING_ENGINE: ollama
+      RAG_EMBEDDING_MODEL: llama3.1
+      RAG_OLLAMA_BASE_URL: http://ollama:11434
+    ports:
+      - "3000:8080"
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ollama-init:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c"]
+    command: ["ollama pull llama3.1 && ollama pull nomic-embed-text"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  django_data:
+  postgres_data:
+  ollama_data:
+  open_webui_data:
