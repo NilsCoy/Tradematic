@@ -16,6 +16,7 @@ from main.scripts.api import (
     calculate_metrics,
     decrypt,
     encrypt,
+    build_portfolio_distribution_chart
 )
 from main.scripts.model import predict_data_from_array, preload_model, get_offset, get_slice_data, get_unique_slice_data
 
@@ -135,29 +136,67 @@ def get_charts(username, profile_id):
 
 
 def get_portfolio_summary(portfolio):
-    metrics = [item['metrics'] for item in portfolio['stocks']]
+    metrics = [
+        item["metrics"]
+        for item in portfolio["stocks"]
+        if item.get("metrics")
+    ]
+
+    if not metrics:
+        return None
 
     total_invested = sum(m["invested"] for m in metrics)
     total_value = sum(m["current_value"] for m in metrics)
-    total_profit = total_value - total_invested
+    total_profit = sum(m["profit"] for m in metrics)
 
-    total_yield = (total_profit / total_invested * 100) if total_invested else 0
-    avg_yield = sum(m["yield_pct"] for m in metrics) / len(metrics)
+    total_yield = (
+        total_profit / total_invested * 100
+        if total_invested else 0
+    )
+
+    avg_yield = (
+        sum(m["yield_pct"] for m in metrics) / len(metrics)
+    )
 
     best = max(metrics, key=lambda x: x["yield_pct"])
     worst = min(metrics, key=lambda x: x["yield_pct"])
-    best_name = ''
-    worst_name = ''
-    for i in portfolio['stocks']:
-        if i['figi'] == best['figi']: best_name = i['name']
-        if i['figi'] == worst['figi']: worst_name = i['name']
+
+    best_name = next(
+        (
+            stock["name"]
+            for stock in portfolio["stocks"]
+            if stock["figi"] == best["figi"]
+        ),
+        None
+    )
+
+    worst_name = next(
+        (
+            stock["name"]
+            for stock in portfolio["stocks"]
+            if stock["figi"] == worst["figi"]
+        ),
+        None
+    )
 
     return {
         "total_invested": round(total_invested, 2),
         "total_value": round(total_value, 2),
         "total_profit": round(total_profit, 2),
-        "total_yield_pct": round(total_yield, 1),
-        "avg_yield_pct": round(avg_yield, 1),
-        "best": best_name,
-        "worst": worst_name
+        "total_yield_pct": round(total_yield, 2),
+        "avg_yield_pct": round(avg_yield, 2),
+
+        "best": {
+            "name": best_name,
+            "yield_pct": best["yield_pct"],
+            "profit": best["profit"]
+        },
+
+        "worst": {
+            "name": worst_name,
+            "yield_pct": worst["yield_pct"],
+            "profit": worst["profit"]
+        },
+
+        "distribution": build_portfolio_distribution_chart(portfolio)
     }

@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 UV ?= uv
-TRADER_PYTHON ?= python3.10
+TRADER_PYTHON ?= .venv/Scripts/python.exe
 ASSETS ?=
 ASSETS_FILE ?=
 LIMIT ?= 20
