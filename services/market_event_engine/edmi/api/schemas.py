@@ -33,8 +33,11 @@ class NewsAggregatorPipelineRequest(BaseModel):
 
 class RagpipeBuildRequest(BaseModel):
     input_path: str | None = None
+    input_paths: list[str] = Field(default_factory=list)
+    text_inputs: list[str] = Field(default_factory=list)
     index_dir: str | None = None
     limit: int | None = Field(default=None, ge=1)
+    max_documents: int | None = Field(default=None, ge=1)
     max_words: int = Field(default=180, ge=20, le=500)
     overlap: int = Field(default=40, ge=0, le=200)
 

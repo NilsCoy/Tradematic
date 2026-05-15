@@ -1,0 +1,35 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+        <link href="{% static 'css/panel-styles.css'%}" type="text/css" rel="stylesheet" />
+        <link rel="icon" href="{% static 'assets/icon.png'%}" type="image/png">
+        <script defer src="{% static 'js/ragpipe-chat.js'%}"></script>
+        <title>Tradematic AI Chat</title>
+    </head>
+    <body class="chat-page" data-chat-open="true">
+        <header>
+            <div class="logo-div">
+                <div class="logo">
+                    <img src="{% static 'assets/site_logo.svg'%}" alt="logo" class="site-logo">
+                    AI чат
+                </div>
+                <div class="underline"></div>
+            </div>
+            <div class="exit">
+                <p><a href="{% url 'panel' %}">В панель</a></p>
+            </div>
+        </header>
+        <main class="chat-page-content">
+            <h1><span class="gradient">Tradematic AI</span></h1>
+            <p>Чат использует RAGPipe: новости, события, FAISS, BM25, Chroma и память.</p>
+        </main>
+        {% include 'ragpipe_chat.html' %}
+    </body>
+</html>

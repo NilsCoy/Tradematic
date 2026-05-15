@@ -53,57 +53,60 @@ async def build_ragpipe_index(
     input_csv: Path,
     output_dir: Path,
     limit: int | None = None,
+    max_documents: int | None = None,
     max_words: int = 180,
     overlap: int = 40,
+    input_csvs: list[Path] | None = None,
+    text_inputs: list[Path] | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
     embeddings = EmbeddingService(settings)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     documents: list[RagDocument] = []
-    rows_seen = 0
-    for row_number, row in enumerate(iter_csv_rows(input_csv), start=1):
-        text = row_text(row)
-        if len(text.split()) < 8:
-            continue
-        title = row.get("title", "").strip()
-        source = row.get("source", "").strip()
-        url = row.get("url", "").strip()
-        doc_id = document_id(url, title, text)
-        chunks = chunk_text(text, max_words=max_words, overlap=overlap)
+    source_summaries: list[dict[str, Any]] = []
+    csv_inputs = input_csvs or [input_csv]
+    for source_index, csv_path in enumerate(csv_inputs, start=1):
+        before = len(documents)
+        rows_seen = await _append_csv_documents(
+            csv_path,
+            source_index,
+            documents,
+            embeddings,
+            output_dir,
+            limit,
+            max_documents,
+            max_words,
+            overlap,
+        )
+        source_summaries.append(
+            {
+                "type": "csv",
+                "path": str(csv_path),
+                "rows_seen": rows_seen,
+                "documents": len(documents) - before,
+            }
+        )
 
-        for chunk_number, chunk in enumerate(chunks, start=1):
-            if len(chunk.split()) < 8:
-                continue
-            embedding = await embeddings.embed(f"{title}\n{chunk}".strip())
-            document = RagDocument(
-                doc_id=doc_id,
-                chunk_id=f"{row_number}_{chunk_number}",
-                text=chunk,
-                title=title,
-                source=source,
-                url=url,
-                loaded_at=row.get("loaded_at", "").strip(),
-                published_at=row.get("published_at", "").strip(),
-                embedding=embedding,
-            )
-            documents.append(document)
-            save_event(
-                output_dir / MEMORY_FILE,
-                chunk,
-                {
-                    "kind": "news_chunk",
-                    "source": source,
-                    "title": title,
-                    "url": url,
-                    "loaded_at": document.loaded_at,
-                    "published_at": document.published_at,
-                },
-            )
-
-        rows_seen += 1
-        if limit is not None and rows_seen >= limit:
-            break
+    for text_index, text_path in enumerate(text_inputs or [], start=1):
+        before = len(documents)
+        appended = await _append_text_documents(
+            text_path,
+            text_index,
+            documents,
+            embeddings,
+            output_dir,
+            max_documents,
+            max_words,
+            overlap,
+        )
+        source_summaries.append(
+            {
+                "type": "text",
+                "path": str(text_path),
+                "documents": appended,
+            }
+        )
 
     docs_path = output_dir / DOCS_FILE
     save_documents(documents, docs_path)
@@ -114,6 +117,8 @@ async def build_ragpipe_index(
 
     return {
         "input_csv": str(input_csv),
+        "input_csvs": [str(path) for path in csv_inputs],
+        "text_inputs": [str(path) for path in text_inputs or []],
         "output_dir": str(output_dir),
         "docs_jsonl": str(docs_path),
         "bm25": str(output_dir / BM25_FILE),
@@ -121,12 +126,147 @@ async def build_ragpipe_index(
         "faiss_metadata": str(output_dir / FAISS_METADATA_FILE),
         "chroma": str(output_dir / "chroma_db") if chroma_enabled else "",
         "memory": str(output_dir / MEMORY_FILE),
-        "rows_seen": rows_seen,
+        "sources": source_summaries,
         "documents": len(documents),
+        "max_documents": max_documents,
         "faiss_enabled": faiss_enabled,
         "chroma_enabled": chroma_enabled,
         "embedding_model": settings.embedding_model,
     }
+
+
+async def _append_csv_documents(
+    input_csv: Path,
+    source_index: int,
+    documents: list[RagDocument],
+    embeddings: EmbeddingService,
+    output_dir: Path,
+    limit: int | None,
+    max_documents: int | None,
+    max_words: int,
+    overlap: int,
+) -> int:
+    rows_seen = 0
+    source_documents = 0
+    for row_number, row in enumerate(iter_csv_rows(input_csv), start=1):
+        text = row_text(row)
+        if len(text.split()) < 8:
+            continue
+        title = row.get("title", "").strip() or row.get("asset", "").strip() or input_csv.stem
+        source = row.get("source", "").strip() or input_csv.stem
+        url = row.get("url", "").strip()
+        published_at = row.get("published_at", "").strip()
+        loaded_at = row.get("loaded_at", "").strip()
+        source_documents += await _append_chunked_document(
+            documents,
+            embeddings,
+            output_dir,
+            text=text,
+            title=title,
+            source=source,
+            url=url,
+            loaded_at=loaded_at,
+            published_at=published_at,
+            chunk_prefix=f"csv{source_index}_{row_number}",
+            max_documents=max_documents,
+            source_documents=source_documents,
+            max_words=max_words,
+            overlap=overlap,
+        )
+
+        rows_seen += 1
+        if (limit is not None and rows_seen >= limit) or (
+            max_documents is not None and source_documents >= max_documents
+        ):
+            break
+    return rows_seen
+
+
+async def _append_text_documents(
+    input_path: Path,
+    source_index: int,
+    documents: list[RagDocument],
+    embeddings: EmbeddingService,
+    output_dir: Path,
+    max_documents: int | None,
+    max_words: int,
+    overlap: int,
+) -> int:
+    if not input_path.exists():
+        return 0
+    text = input_path.read_text(encoding="utf-8", errors="ignore")
+    if len(text.split()) < 8:
+        return 0
+    return await _append_chunked_document(
+        documents,
+        embeddings,
+        output_dir,
+        text=text,
+        title=input_path.stem.replace("_", " ").title(),
+        source=input_path.name,
+        url=str(input_path),
+        loaded_at="",
+        published_at="",
+        chunk_prefix=f"text{source_index}",
+        max_documents=max_documents,
+        source_documents=0,
+        max_words=max_words,
+        overlap=overlap,
+    )
+
+
+async def _append_chunked_document(
+    documents: list[RagDocument],
+    embeddings: EmbeddingService,
+    output_dir: Path,
+    *,
+    text: str,
+    title: str,
+    source: str,
+    url: str,
+    loaded_at: str,
+    published_at: str,
+    chunk_prefix: str,
+    max_documents: int | None,
+    source_documents: int,
+    max_words: int,
+    overlap: int,
+) -> int:
+    doc_id = document_id(url, title, text)
+    appended = 0
+    chunks = chunk_text(text, max_words=max_words, overlap=overlap)
+    for chunk_number, chunk in enumerate(chunks, start=1):
+        if len(chunk.split()) < 8:
+            continue
+        if max_documents is not None and source_documents + appended >= max_documents:
+            break
+        embedding = await embeddings.embed(f"{title}\n{chunk}".strip())
+        document = RagDocument(
+            doc_id=doc_id,
+            chunk_id=f"{chunk_prefix}_{chunk_number}",
+            text=chunk,
+            title=title,
+            source=source,
+            url=url,
+            loaded_at=loaded_at,
+            published_at=published_at,
+            embedding=embedding,
+        )
+        documents.append(document)
+        appended += 1
+        save_event(
+            output_dir / MEMORY_FILE,
+            chunk,
+            {
+                "kind": "ragpipe_chunk",
+                "source": source,
+                "title": title,
+                "url": url,
+                "loaded_at": document.loaded_at,
+                "published_at": document.published_at,
+            },
+        )
+    return appended
 
 
 async def query_ragpipe(index_dir: Path, question: str, top_k: int = DEFAULT_TOP_K) -> dict[str, Any]:
@@ -260,12 +400,16 @@ async def _ollama_generate_stream(base_url: str, model: str, prompt: str) -> Asy
 
 
 async def _build(args: argparse.Namespace) -> None:
+    input_paths = [Path(path) for path in args.input]
     result = await build_ragpipe_index(
-        Path(args.input),
+        input_paths[0],
         Path(args.output_dir),
         args.limit,
+        args.max_documents,
         args.max_words,
         args.overlap,
+        input_paths,
+        [Path(path) for path in args.text_input],
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
@@ -293,9 +437,11 @@ async def _chat(args: argparse.Namespace) -> None:
 
 def build_main() -> None:
     parser = argparse.ArgumentParser(description="Build Tradematic ragpipe BM25+FAISS+Chroma+Memory index")
-    parser.add_argument("--input", required=True)
+    parser.add_argument("--input", action="append", required=True)
+    parser.add_argument("--text-input", action="append", default=[])
     parser.add_argument("--output-dir", default=str(default_index_dir()))
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--max-documents", type=int)
     parser.add_argument("--max-words", type=int, default=180)
     parser.add_argument("--overlap", type=int, default=40)
     args = parser.parse_args()

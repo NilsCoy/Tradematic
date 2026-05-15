@@ -18,6 +18,10 @@ def upsert_documents(documents: list[RagDocument], chroma_dir: Path) -> bool:
         return False
 
     client = chromadb.PersistentClient(path=str(chroma_dir))
+    try:
+        client.delete_collection(name=COLLECTION_NAME)
+    except Exception:
+        pass
     collection = client.get_or_create_collection(name=COLLECTION_NAME)
     collection.upsert(
         ids=[document.chunk_id for document in documents],

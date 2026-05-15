@@ -57,6 +57,7 @@ services:
       - .env.docker
     environment:
       LIMIT: ${PIPELINE_LIMIT:-5}
+      RAGPIPE_MAX_DOCUMENTS: ${RAGPIPE_MAX_DOCUMENTS:-80}
       PIPELINE_MODE: ${PIPELINE_MODE:-once}
       INTERVAL_SECONDS: ${INTERVAL_SECONDS:-900}
     volumes:
@@ -131,6 +132,8 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
+      OPENAI_API_BASE_URLS: http://edmi-api:8000/v1
+      OPENAI_API_KEYS: tradematic-local
       RAG_EMBEDDING_ENGINE: ollama
       RAG_EMBEDDING_MODEL: llama3.1
       RAG_OLLAMA_BASE_URL: http://ollama:11434
@@ -140,6 +143,8 @@ services:
       - open_webui_data:/app/backend/data
     depends_on:
       ollama:
+        condition: service_healthy
+      edmi-api:
         condition: service_healthy
 
   ollama-init:

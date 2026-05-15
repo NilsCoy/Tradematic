@@ -5,6 +5,7 @@ TRADER_PYTHON ?= .venv/Scripts/python.exe
 ASSETS ?=
 ASSETS_FILE ?=
 LIMIT ?= 20
+RAGPIPE_MAX_DOCUMENTS ?= 80
 INTERVAL_SECONDS ?= 900
 QUESTION ?= Какие события сильнее всего влияют на рынок?
 OLLAMA_BASE_MODEL ?= llama3.1
@@ -32,6 +33,8 @@ EFFECTIVE_ASSETS_FILE := $(if $(ASSETS_FILE),$(ASSETS_FILE),$(if $(wildcard $(DE
 EDMI_ENV := EDMI_TRADEMATIC_DATASETS_DIR=$(abspath $(DATASETS_DIR)) EDMI_EMBEDDING_LOCAL_FILES_ONLY=true
 ASSET_FLAGS = $(foreach asset,$(ASSETS),--asset $(asset))
 ASSET_ARGS = $(if $(EFFECTIVE_ASSETS_FILE),--assets-file $(abspath $(EFFECTIVE_ASSETS_FILE)),$(if $(ASSETS),$(ASSET_FLAGS),))
+RAGPIPE_CSV_INPUT_ARGS = $(if $(wildcard $(PROCESSED_CSV)),--input $(abspath $(PROCESSED_CSV)),) $(if $(wildcard $(RAG_INDEX_CSV)),--input $(abspath $(RAG_INDEX_CSV)),) --input $(abspath $(NEWS_CSV))
+RAGPIPE_TEXT_INPUT_ARGS = $(if $(wildcard $(ASSET_ANALYSIS_MD)),--text-input $(abspath $(ASSET_ANALYSIS_MD)),) $(if $(wildcard $(ASSET_ANALYSIS_JSON)),--text-input $(abspath $(ASSET_ANALYSIS_JSON)),) $(if $(wildcard $(MARKET_BRIEF_MD)),--text-input $(abspath $(MARKET_BRIEF_MD)),) $(if $(wildcard $(MARKET_BRIEF_JSON)),--text-input $(abspath $(MARKET_BRIEF_JSON)),)
 
 .PHONY: help install run migrate makemigrations shell collect-static superuser test format lint uv-lock uv-update \
 	ollama-check install-services collect-news process-news process-news-scheduled build-rag ollama-model analyze-assets rag-query \
@@ -53,7 +56,7 @@ help:
 	@printf "  make process-news LIMIT=20\n"
 	@printf "                               Process parser CSV into $(PROCESSED_CSV)\n"
 	@printf "  make build-rag               Build CSV-backed RAG index and training JSONL\n"
-	@printf "  make build-ragpipe           Build hybrid BM25+FAISS RAG directly from parser CSV\n"
+	@printf "  make build-ragpipe           Build shared BM25+FAISS+Chroma RAG from raw news and EDMI outputs\n"
 	@printf "  make ollama-model            Create local $(OLLAMA_ANALYST_MODEL) Ollama model wrapper\n"
 	@printf "  make analyze-assets          Generate per-asset analysis with Ollama\n"
 	@printf "  make market-brief            Generate categorized market/economic brief\n"
@@ -119,7 +122,6 @@ process-news:
 	$(EDMI_ENV) $(UV) run --no-sync edmi-export-events \
 		--input $(abspath $(NEWS_CSV)) \
 		--output $(abspath $(PROCESSED_CSV)) \
-		--file-order \
 		--limit $(LIMIT)
 
 process-news-scheduled:
@@ -127,7 +129,6 @@ process-news-scheduled:
 	$(EDMI_ENV) $(UV) run --no-sync edmi-export-events \
 		--input $(abspath $(NEWS_CSV)) \
 		--output $(abspath $(PROCESSED_CSV)) \
-		--file-order \
 		--limit $(LIMIT) \
 		--state-file $(abspath $(DEDUP_STATE_CSV)) \
 		--append
@@ -142,9 +143,11 @@ build-rag:
 build-ragpipe:
 	mkdir -p $(RAGPIPE_INDEX_DIR)
 	$(EDMI_ENV) $(UV) run --no-sync edmi-ragpipe-build \
-		--input $(abspath $(NEWS_CSV)) \
+		$(RAGPIPE_CSV_INPUT_ARGS) \
+		$(RAGPIPE_TEXT_INPUT_ARGS) \
 		--output-dir $(abspath $(RAGPIPE_INDEX_DIR)) \
-		--limit $(LIMIT)
+		--limit $(LIMIT) \
+		--max-documents $(RAGPIPE_MAX_DOCUMENTS)
 
 ollama-model:
 	mkdir -p $(DATASETS_DIR)
@@ -196,7 +199,7 @@ ragpipe-stream:
 		--model $(OLLAMA_ANALYST_MODEL) \
 		--stream
 
-pipeline: collect-news process-news build-rag build-ragpipe ollama-model analyze-all
+pipeline: collect-news process-news build-rag ollama-model analyze-all build-ragpipe
 	@printf "\nPipeline completed:\n"
 	@printf "  raw news:       $(NEWS_CSV_COPY)\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
@@ -207,7 +210,7 @@ pipeline: collect-news process-news build-rag build-ragpipe ollama-model analyze
 	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
 	@printf "  market brief:   $(MARKET_BRIEF_MD)\n"
 
-pipeline-from-existing-csv: process-news build-rag build-ragpipe ollama-model analyze-all
+pipeline-from-existing-csv: process-news build-rag ollama-model analyze-all build-ragpipe
 	@printf "\nPipeline completed from existing CSV:\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"
 	@printf "  RAG index:      $(RAG_INDEX_CSV)\n"
@@ -217,7 +220,7 @@ pipeline-from-existing-csv: process-news build-rag build-ragpipe ollama-model an
 	@printf "  analysis MD:    $(ASSET_ANALYSIS_MD)\n"
 	@printf "  market brief:   $(MARKET_BRIEF_MD)\n"
 
-scheduled-once: collect-news process-news-scheduled build-rag build-ragpipe ollama-model analyze-all
+scheduled-once: collect-news process-news-scheduled build-rag ollama-model analyze-all build-ragpipe
 	@printf "\nScheduled iteration completed:\n"
 	@printf "  dedup state:    $(DEDUP_STATE_CSV)\n"
 	@printf "  processed CSV:  $(PROCESSED_CSV)\n"

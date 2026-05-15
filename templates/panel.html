@@ -14,6 +14,7 @@
         <script src="https://unpkg.com/htmx.org@1.9.10"></script>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.2.0/chartjs-plugin-zoom.min.js"></script>
+        <script defer src="{% static 'js/ragpipe-chat.js'%}"></script>
         <title>Tradematic Panel</title>
     </head>
 
@@ -55,10 +56,12 @@
             <div class="title"><span class="gradient">Главное</span></div>
             <a href="?page=profile"><button class="profile">Профиль</button></a>
             <a href="?page=portfolio"><button class="portfolio">Портфели</button></a>
+            <a href="{% url 'chat_api' %}"><button class="chat">AI чат</button></a>
         </nav>
         <div class="content">
             {% include template %}
         </div>
+        {% include 'ragpipe_chat.html' %}
     </body>
 
 

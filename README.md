@@ -9,6 +9,137 @@
 - `services/ragpipe` - hybrid RAG сервис поверх CSV парсера: chunking, BM25, FAISS, streaming-ответы через Ollama.
 - `main/scripts/datasets` - единое CSV-хранилище Tradematic.
 
+## Как сейчас работает связка
+
+Вся система собрана как единый Tradematic-монолит:
+
+- Django UI;
+- парсер новостей `services/news_aggregator`;
+- EDMI processing `services/market_event_engine`;
+- RAGPipe `services/ragpipe`;
+- Ollama;
+- Open WebUI.
+
+Главный принцип: Tradematic chat и Open WebUI смотрят в одну и ту же базу знаний:
+
+```text
+main/scripts/datasets/ragpipe
+```
+
+Одна итерация pipeline делает:
+
+```text
+1. collect-news
+   Парсер собирает новости.
+   Результат: services/news_aggregator/data/news_dataset.csv
+
+2. process-news
+   EDMI читает CSV, дедуплицирует новости, чистит текст, делает embeddings,
+   NER и классификацию событий через Ollama.
+   Результат: main/scripts/datasets/processed_events.csv
+
+3. build-rag
+   Из обработанных событий строится CSV-backed RAG index.
+   Результат:
+   main/scripts/datasets/rag_index.csv
+   main/scripts/datasets/rag_training.jsonl
+
+4. ollama-model
+   Создается или обновляется Ollama wrapper-модель:
+   tradematic-analyst
+
+5. analyze-all
+   Генерируется анализ по активам и общий market brief.
+   Результат:
+   main/scripts/datasets/asset_analysis.json
+   main/scripts/datasets/asset_analysis.md
+   main/scripts/datasets/market_brief.json
+   main/scripts/datasets/market_brief.md
+
+6. build-ragpipe
+   Собирается общий hybrid RAG index.
+```
+
+RAGPipe теперь строится не только по сырым новостям. В общий индекс попадают сразу несколько слоев:
+
+```text
+сырые новости:
+services/news_aggregator/data/news_dataset.csv
+
+обработанные события:
+main/scripts/datasets/processed_events.csv
+
+подготовленный RAG CSV:
+main/scripts/datasets/rag_index.csv
+
+итоговая аналитика:
+main/scripts/datasets/asset_analysis.md/json
+main/scripts/datasets/market_brief.md/json
+```
+
+Все эти данные режутся на чанки, векторизуются через Ollama `nomic-embed-text`, затем сохраняются в:
+
+```text
+main/scripts/datasets/ragpipe/ragpipe_docs.jsonl
+main/scripts/datasets/ragpipe/ragpipe_bm25.pkl
+main/scripts/datasets/ragpipe/ragpipe_faiss.index
+main/scripts/datasets/ragpipe/ragpipe_faiss_docs.pkl
+main/scripts/datasets/ragpipe/chroma_db/
+main/scripts/datasets/ragpipe/ragpipe_memory.json
+```
+
+После авторизации в Django доступен чат:
+
+```text
+GET  /chat/
+POST /chat/
+```
+
+`GET /chat/` открывает страницу чата. `POST /chat/` принимает JSON:
+
+```json
+{"message": "Что сейчас важно для рынка?"}
+```
+
+Django проксирует запрос в EDMI:
+
+```text
+POST /ragpipe/chat
+```
+
+EDMI ищет релевантный контекст в общем RAGPipe index, отправляет найденный контекст в Ollama `tradematic-analyst` и возвращает ответ. Поэтому чат в Tradematic работает не с пустой LLM, а с общей базой знаний.
+
+Open WebUI подключается к тому же EDMI RAG backend через OpenAI-compatible endpoints:
+
+```text
+GET  /v1/models
+POST /v1/chat/completions
+```
+
+В Docker это настроено так:
+
+```text
+OPENAI_API_BASE_URLS=http://edmi-api:8000/v1
+```
+
+В Open WebUI для доступа к той же базе знаний нужно выбирать модель `tradematic-analyst` из OpenAI/EDMI provider. Если выбрать обычную Ollama `llama3.1`, это будет просто LLM без Tradematic RAG-контекста.
+
+Короткая схема:
+
+```text
+Парсер собирает новости
+        ↓
+EDMI делает события, NER, классификацию и аналитику
+        ↓
+RAGPipe собирает одну общую базу знаний из сырых и обработанных данных
+        ↓
+Tradematic chat и Open WebUI спрашивают один и тот же RAG index
+        ↓
+Ollama отвечает с контекстом новостей, событий и аналитики
+```
+
+Важно: это не fine-tune весов Ollama. Это RAG-схема: модель не переобучается физически, а получает актуальную базу знаний через retrieval.
+
 Полный сценарий одной командой:
 
 ```bash
@@ -111,17 +242,48 @@ news_aggregator collect
   -> RAG index
   -> main/scripts/datasets/rag_index.csv
   -> main/scripts/datasets/rag_training.jsonl
-  -> hybrid ragpipe index в main/scripts/datasets/ragpipe
   -> Ollama model wrapper tradematic-analyst
   -> main/scripts/datasets/asset_analysis.json
   -> main/scripts/datasets/asset_analysis.md
   -> main/scripts/datasets/market_brief.json
   -> main/scripts/datasets/market_brief.md
+  -> shared hybrid ragpipe index в main/scripts/datasets/ragpipe
 ```
 
 `rag_training.jsonl` - это выгрузка обучающих примеров из CSV. Локальная Ollama не дообучает веса модели этим файлом напрямую, поэтому рабочая реализация сделана как RAG: новости индексируются, релевантный контекст подается в локальную модель `tradematic-analyst`, а результат сохраняется как анализ по каждому активу.
 
-Встроенный `ragpipe` больше не является отдельным проектом. Его логика перенесена в `services/ragpipe` и запускается из общего Tradematic-окружения. Он строится напрямую на CSV парсера новостей: CSV читается построчно, тексты режутся на чанки, embeddings создаются через Ollama `nomic-embed-text`, затем сохраняются FAISS, BM25, Chroma и memory. Вопросы проходят через multi-query retrieval, hybrid search, rerank-слой и LLM. CrossEncoder rerank выключен по умолчанию из-за возможного OpenMP-конфликта в локальных окружениях; включается через `RAGPIPE_ENABLE_RERANK=true`.
+Встроенный `ragpipe` больше не является отдельным проектом. Его логика перенесена в `services/ragpipe` и запускается из общего Tradematic-окружения. Он строит единую базу знаний `main/scripts/datasets/ragpipe` сразу из нескольких источников:
+
+- сырые новости парсера `services/news_aggregator/data/news_dataset.csv`;
+- агрегированные события EDMI `main/scripts/datasets/processed_events.csv`;
+- подготовленный RAG CSV `main/scripts/datasets/rag_index.csv`;
+- итоговые аналитические файлы `asset_analysis.*` и `market_brief.*`.
+
+CSV читаются построчно, тексты режутся на чанки, embeddings создаются через Ollama `nomic-embed-text`, затем сохраняются FAISS, BM25, Chroma и memory. Вопросы проходят через multi-query retrieval, hybrid search, rerank-слой и LLM. CrossEncoder rerank выключен по умолчанию из-за возможного OpenMP-конфликта в локальных окружениях; включается через `RAGPIPE_ENABLE_RERANK=true`.
+
+## Единая база знаний для чатов
+
+Tradematic UI, endpoint `/chat/`, EDMI `/ragpipe/chat` и Open WebUI должны использовать один и тот же индекс:
+
+```text
+main/scripts/datasets/ragpipe
+```
+
+В Docker Open WebUI подключен к EDMI как OpenAI-compatible backend:
+
+```text
+OPENAI_API_BASE_URLS=http://edmi-api:8000/v1
+```
+
+Поэтому в Open WebUI выбирайте модель `tradematic-analyst` из OpenAI/EDMI-провайдера, если нужен тот же RAG-контекст, что и в Tradematic-чате. Прямая модель Ollama `llama3.1` остается доступной как обычная LLM, но без Tradematic RAG-контекста.
+
+В Tradematic после авторизации доступны:
+
+```text
+GET  /chat/              страница чата
+POST /chat/              JSON {"message": "..."} -> общий RAGPipe index
+POST /api/ragpipe/chat/  совместимый API endpoint для виджета
+```
 
 ## Файлы результата pipeline
 
@@ -135,7 +297,7 @@ news_aggregator collect
 | `main/scripts/datasets/processed_state.csv` | Persistent state дедупликации для `make schedule` и `make process-news-scheduled`. Нужен, чтобы повторные новости не уходили заново в NER/LLM между итерациями расписания. |
 | `main/scripts/datasets/rag_index.csv` | CSV-backed RAG index. Из него выбирается релевантный контекст для вопроса или анализа конкретного актива. |
 | `main/scripts/datasets/rag_training.jsonl` | JSONL-представление обработанных событий как обучающих/контекстных примеров. В текущей реализации используется как подготовленный корпус для RAG, а не как fine-tune весов Ollama. |
-| `main/scripts/datasets/ragpipe/ragpipe_docs.jsonl` | Чанки исходных новостей из CSV парсера с метаданными и embedding-векторами для hybrid RAG. |
+| `main/scripts/datasets/ragpipe/ragpipe_docs.jsonl` | Чанки сырого CSV новостей, EDMI-событий, RAG CSV и итоговой аналитики с метаданными и embedding-векторами для общего hybrid RAG. |
 | `main/scripts/datasets/ragpipe/ragpipe_bm25.pkl` | BM25 индекс для лексического поиска по новостям. |
 | `main/scripts/datasets/ragpipe/ragpipe_faiss.index` | FAISS индекс для векторного поиска по тем же чанкам. |
 | `main/scripts/datasets/ragpipe/ragpipe_faiss_docs.pkl` | Метаданные документов, соответствующие FAISS-векторам. |
@@ -167,7 +329,7 @@ make pipeline-from-existing-csv ASSETS_FILE=main/scripts/datasets/assets.txt LIM
 make rag-query QUESTION="Какие события важны для рынка?"
 ```
 
-Проверить hybrid ragpipe, обученный на CSV парсера:
+Проверить общий hybrid ragpipe, построенный на сырых новостях и EDMI-выходах:
 
 ```bash
 make build-ragpipe LIMIT=20
@@ -182,6 +344,8 @@ POST /ragpipe/build
 POST /ragpipe/query
 POST /ragpipe/chat
 GET  /ragpipe/chat/stream?question=...
+GET  /v1/models
+POST /v1/chat/completions
 ```
 
 Перед первым запуском убедитесь, что локально доступна Ollama:
@@ -207,7 +371,7 @@ make pipeline LIMIT=20
 make schedule ASSETS_FILE=main/scripts/datasets/assets.txt LIMIT=20 INTERVAL_SECONDS=900
 ```
 
-Каждая итерация делает полный цикл: сбор новостей, persistent dedup, EDMI processing с NER/Ollama/price delta, обновление CSV, пересборку RAG и выпуск анализа по активам.
+Каждая итерация делает полный цикл: сбор новостей, persistent dedup, EDMI processing с NER/Ollama/price delta, обновление CSV, выпуск анализа по активам и пересборку общей RAGPipe-базы знаний. В итоге модель получает два слоя контекста одновременно: сырой новостной фон и агрегированные подготовленные события/brief.
 
 Для дедупликации между итерациями используется `main/scripts/datasets/processed_state.csv`. В нем хранятся хэши и embeddings уже обработанных новостей, поэтому повторные новости не отправляются заново в NER/LLM даже если снова встретились позже.
 

@@ -24,6 +24,7 @@ CSRF_TRUSTED_ORIGINS = [
     for origin in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
     if origin.strip()
 ]
+EDMI_API_URL = os.environ.get('DJANGO_EDMI_API_URL', 'http://127.0.0.1:8000').rstrip('/')
 
 # Application definition
 INSTALLED_APPS = [

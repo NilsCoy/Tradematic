@@ -1,4 +1,7 @@
+import json
+import time
 from pathlib import Path
+from uuid import uuid4
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
@@ -34,6 +37,38 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/v1/models")
+    async def openai_models() -> dict:
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": "tradematic-analyst",
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "tradematic",
+                }
+            ],
+        }
+
+    @app.post("/v1/chat/completions", response_model=None)
+    async def openai_chat_completions(payload: dict):
+        question = _last_user_message(payload.get("messages", []))
+        if not question:
+            raise HTTPException(status_code=400, detail="No user message found")
+
+        model = str(payload.get("model") or "tradematic-analyst")
+        top_k = int(payload.get("top_k") or 6)
+        index_dir = default_index_dir()
+        if payload.get("stream"):
+            return StreamingResponse(
+                _openai_stream(index_dir, question, model, top_k),
+                media_type="text/event-stream",
+            )
+
+        result = await ask_ragpipe(index_dir, question, model, top_k)
+        return _openai_completion_payload(model, result["answer"])
 
     @app.post("/ingest/news", response_model=EventResponse)
     async def ingest_news(payload: NewsIngestRequest) -> EventResponse:
@@ -78,14 +113,21 @@ def create_app() -> FastAPI:
 
     @app.post("/ragpipe/build")
     async def build_ragpipe(payload: RagpipeBuildRequest) -> dict:
-        input_path = Path(payload.input_path or settings.news_aggregator_csv_path)
+        input_paths = [Path(path) for path in payload.input_paths]
+        if payload.input_path:
+            input_paths.insert(0, Path(payload.input_path))
+        if not input_paths:
+            input_paths = [settings.news_aggregator_csv_path]
         index_dir = Path(payload.index_dir) if payload.index_dir else default_index_dir()
         return await build_ragpipe_index(
-            input_path,
-            index_dir,
-            payload.limit,
-            payload.max_words,
-            payload.overlap,
+            input_csv=input_paths[0],
+            output_dir=index_dir,
+            limit=payload.limit,
+            max_documents=payload.max_documents,
+            max_words=payload.max_words,
+            overlap=payload.overlap,
+            input_csvs=input_paths,
+            text_inputs=[Path(path) for path in payload.text_inputs],
         )
 
     @app.post("/ragpipe/query")
@@ -170,6 +212,51 @@ def _to_event_response(event, asset: str | None) -> EventResponse:
         relevance=event.asset_relations.get(normalized) if normalized else None,
         market_effect=event.market_effects.get(normalized) if normalized else None,
     )
+
+
+def _last_user_message(messages: list[dict]) -> str:
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            content = message.get("content", "")
+            if isinstance(content, str):
+                return content.strip()
+            if isinstance(content, list):
+                parts = []
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        parts.append(str(item.get("text", "")))
+                return "\n".join(parts).strip()
+    return ""
+
+
+def _openai_completion_payload(model: str, content: str) -> dict:
+    return {
+        "id": f"chatcmpl-{uuid4().hex}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+
+async def _openai_stream(index_dir: Path, question: str, model: str, top_k: int):
+    completion_id = f"chatcmpl-{uuid4().hex}"
+    async for chunk in stream_ragpipe_answer(index_dir, question, model, top_k):
+        payload = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}],
+        }
+        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 def run() -> None:

@@ -68,7 +68,7 @@ def iter_csv_rows(input_csv: Path) -> Iterable[dict[str, str]]:
 
 
 def row_text(row: dict[str, str]) -> str:
-    text = row.get("text", "").strip()
+    text = row.get("text", "").strip() or row.get("content", "").strip()
     if text:
         return clean_text(text)
     chunks = row.get("chunks", "").strip()
