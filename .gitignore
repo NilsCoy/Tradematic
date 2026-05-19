@@ -1,5 +1,6 @@
 # Python / Django
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *.pyo
 *.pyd
@@ -11,6 +12,9 @@ __pycache__/
 *.mo
 *.db
 *.sqlite3
+*.db-journal
+*.sqlite3-journal
+db.sqlite3
 media/
 staticfiles/
 local_settings.py
@@ -48,6 +52,8 @@ pytest_cache/
 .tox/
 .mypy_cache/
 .ruff_cache/
+.pyre/
+.hypothesis/
 
 # Build
 build/
@@ -68,12 +74,18 @@ main/scripts/datasets/asset_analysis.json
 main/scripts/datasets/asset_analysis.md
 main/scripts/datasets/market_brief.json
 main/scripts/datasets/market_brief.md
+main/scripts/datasets/*.pkl
+main/scripts/datasets/*.index
+main/scripts/datasets/chroma_db/
+main/scripts/datasets/**/chroma_db/
 
 # Temporary files
 *.pid
 logs/
 cache/
 tmp/
+temp/
+temp.json
 *.bak
 *.swp
 *.tmp

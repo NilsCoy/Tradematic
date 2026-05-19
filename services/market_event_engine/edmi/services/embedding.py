@@ -28,7 +28,7 @@ class EmbeddingService:
                 self.settings.embedding_model,
                 local_files_only=self.settings.embedding_local_files_only,
             )
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return None
         return self._model
 

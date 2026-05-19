@@ -34,6 +34,9 @@ class RagpipeSettings:
     enable_rerank: bool = False
     multi_query_timeout: float = 8.0
     embedding_timeout: float = 30.0
+    chat_timeout: float = 600.0
+    chat_context_chars: int = 900
+    chat_num_predict: int = 384
 
 
 def get_settings() -> RagpipeSettings:
@@ -49,6 +52,9 @@ def get_settings() -> RagpipeSettings:
         enable_rerank=_env_bool("RAGPIPE_ENABLE_RERANK", False),
         multi_query_timeout=_env_float("RAGPIPE_MULTI_QUERY_TIMEOUT", 8.0),
         embedding_timeout=_env_float("RAGPIPE_EMBEDDING_TIMEOUT", 30.0),
+        chat_timeout=_env_float("RAGPIPE_CHAT_TIMEOUT", 600.0),
+        chat_context_chars=int(_env_float("RAGPIPE_CHAT_CONTEXT_CHARS", 900)),
+        chat_num_predict=int(_env_float("RAGPIPE_CHAT_NUM_PREDICT", 384)),
     )
 
 

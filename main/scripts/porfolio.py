@@ -2,8 +2,6 @@ import json
 from datetime import datetime, timedelta
 
 import pandas as pd
-from cryptography.fernet import Fernet
-from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import redirect
 from main.scripts.api import (
@@ -13,12 +11,11 @@ from main.scripts.api import (
     get_daily_data,
     get_name_stock,
     save_to_csv,
-    calculate_metrics,
     decrypt,
     encrypt,
     build_portfolio_distribution_chart
 )
-from main.scripts.model import predict_data_from_array, preload_model, get_offset, get_slice_data, get_unique_slice_data
+from main.scripts.model import predict_data_from_array, preload_model, get_offset, get_slice_data
 
 from main.models import UserTokens
 

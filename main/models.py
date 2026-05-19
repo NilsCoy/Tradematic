@@ -13,11 +13,11 @@ class UserTokens(models.Model):
 
     class Meta:
         db_table = 'tokens'
-        ordering = ['username', '-created_at']
+        ordering = ('username', '-created_at')
         verbose_name = 'Токен пользователя'
         verbose_name_plural = 'Токены пользователей'
-        unique_together = [['username', 'token']]
-        indexes = [
+        unique_together = (('username', 'token'),)
+        indexes = [  # noqa: RUF012
             models.Index(fields=['username']),  # Индекс для сортировки по имени
             models.Index(fields=['-created_at']),  # Индекс для обратной сортировки по дате
         ]

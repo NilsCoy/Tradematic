@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,7 @@ from tradematic_ragpipe.documents import (
 )
 from tradematic_ragpipe.embeddings import EmbeddingService
 from tradematic_ragpipe.faiss_index import FAISS_FILE, FAISS_METADATA_FILE, save_faiss, save_metadata
-from tradematic_ragpipe.memory_store import load_memory, save_answer, save_event
+from tradematic_ragpipe.memory_store import save_answer, save_event
 from tradematic_ragpipe.multi_query import generate_queries
 from tradematic_ragpipe.retrieval import hybrid_search, match_payload
 from tradematic_ragpipe.settings import default_index_dir, get_settings
@@ -32,6 +33,7 @@ from tradematic_ragpipe.trend_analysis import detect_trend
 DEFAULT_TOP_K = 6
 DOCS_FILE = "ragpipe_docs.jsonl"
 MEMORY_FILE = "ragpipe_memory.json"
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """
 Ты профессиональный финансовый аналитик Tradematic. Отвечай только на основе RAG-контекста,
@@ -41,8 +43,9 @@ SYSTEM_PROMPT = """
 1. Не выдумывай факты вне контекста.
 2. Для рыночных вопросов разделяй факт, экономический смысл и возможное влияние.
 3. Если есть точные числа, даты, источники или URL, используй их аккуратно.
-4. История и тренд являются вспомогательным контекстом, а не доказательством.
-5. Если вопрос не относится к рынкам, экономике, компаниям, активам или новостному фону,
+4. Сгенерированные поисковые запросы не являются фактами и не должны попадать в ответ как события.
+5. История и тренд являются вспомогательным контекстом, а не доказательством.
+6. Если вопрос не относится к рынкам, экономике, компаниям, активам или новостному фону,
    коротко откажись и объясни ограничение.
 
 Отвечай на русском языке, кратко, но с выводами.
@@ -62,11 +65,20 @@ async def build_ragpipe_index(
     settings = get_settings()
     embeddings = EmbeddingService(settings)
     output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(
+        "RAGPipe build started: output_dir=%s limit=%s max_documents=%s max_words=%s overlap=%s",
+        output_dir,
+        limit,
+        max_documents,
+        max_words,
+        overlap,
+    )
 
     documents: list[RagDocument] = []
     source_summaries: list[dict[str, Any]] = []
     csv_inputs = input_csvs or [input_csv]
     for source_index, csv_path in enumerate(csv_inputs, start=1):
+        logger.info("RAGPipe CSV source started: path=%s index=%s", csv_path, source_index)
         before = len(documents)
         rows_seen = await _append_csv_documents(
             csv_path,
@@ -87,8 +99,16 @@ async def build_ragpipe_index(
                 "documents": len(documents) - before,
             }
         )
+        logger.info(
+            "RAGPipe CSV source finished: path=%s rows_seen=%s documents_added=%s total_documents=%s",
+            csv_path,
+            rows_seen,
+            len(documents) - before,
+            len(documents),
+        )
 
     for text_index, text_path in enumerate(text_inputs or [], start=1):
+        logger.info("RAGPipe text source started: path=%s index=%s", text_path, text_index)
         before = len(documents)
         appended = await _append_text_documents(
             text_path,
@@ -107,13 +127,29 @@ async def build_ragpipe_index(
                 "documents": appended,
             }
         )
+        logger.info(
+            "RAGPipe text source finished: path=%s documents_added=%s total_documents=%s",
+            text_path,
+            appended,
+            len(documents),
+        )
 
     docs_path = output_dir / DOCS_FILE
+    logger.info("RAGPipe writing documents: path=%s documents=%s", docs_path, len(documents))
     save_documents(documents, docs_path)
+    logger.info("RAGPipe writing BM25: path=%s", output_dir / BM25_FILE)
     save_bm25(documents, output_dir / BM25_FILE)
+    logger.info("RAGPipe writing FAISS: path=%s", output_dir / FAISS_FILE)
     faiss_enabled = save_faiss(documents, output_dir / FAISS_FILE)
     save_metadata(documents, output_dir / FAISS_METADATA_FILE)
+    logger.info("RAGPipe writing Chroma: enabled=%s path=%s", settings.enable_chroma, output_dir / "chroma_db")
     chroma_enabled = settings.enable_chroma and upsert_documents(documents, output_dir / "chroma_db")
+    logger.info(
+        "RAGPipe build finished: documents=%s faiss_enabled=%s chroma_enabled=%s",
+        len(documents),
+        faiss_enabled,
+        chroma_enabled,
+    )
 
     return {
         "input_csv": str(input_csv),
@@ -175,6 +211,14 @@ async def _append_csv_documents(
         )
 
         rows_seen += 1
+        if rows_seen % 25 == 0:
+            logger.info(
+                "RAGPipe CSV progress: path=%s rows_seen=%s source_documents=%s total_documents=%s",
+                input_csv,
+                rows_seen,
+                source_documents,
+                len(documents),
+            )
         if (limit is not None and rows_seen >= limit) or (
             max_documents is not None and source_documents >= max_documents
         ):
@@ -276,7 +320,10 @@ async def query_ragpipe(index_dir: Path, question: str, top_k: int = DEFAULT_TOP
 
     settings = get_settings()
     embeddings = EmbeddingService(settings)
-    queries = await generate_queries(question, settings)
+    if _uses_deterministic_market_queries(question):
+        queries = _market_queries(question)
+    else:
+        queries = await generate_queries(question, settings)
     query_vector = await embeddings.embed(question)
     matches = hybrid_search(index_dir, documents, queries, query_vector, top_k, settings)
     return {
@@ -284,6 +331,20 @@ async def query_ragpipe(index_dir: Path, question: str, top_k: int = DEFAULT_TOP
         "queries": queries,
         "matches": [match_payload(score, document) for score, document in matches],
     }
+
+
+def _uses_deterministic_market_queries(question: str) -> bool:
+    lowered = question.lower()
+    return any(marker in lowered for marker in ("рын", "миров", "событ", "эконом", "геополит", "фон", "новост", "последн"))
+
+
+def _market_queries(question: str) -> list[str]:
+    additions = [
+        "последние новости экономика рынки компании инфляция ставка нефть валюта",
+        "рыночная сводка экономика инфляция ставки нефть газ санкции геополитика",
+        "market brief macro economy rates inflation oil gas geopolitics",
+    ]
+    return list(dict.fromkeys([question, *additions]))
 
 
 async def ask_ragpipe(
@@ -297,7 +358,16 @@ async def ask_ragpipe(
     prompt = _chat_prompt(index_dir, question, retrieval)
     settings = get_settings()
     selected_model = model or settings.chat_model
-    answer = await _ollama_generate((ollama_url or settings.ollama_url).rstrip("/"), selected_model, prompt)
+    try:
+        answer = await _ollama_generate(
+            (ollama_url or settings.ollama_url).rstrip("/"),
+            selected_model,
+            prompt,
+            settings.chat_timeout,
+            settings.chat_num_predict,
+        )
+    except httpx.HTTPError as exc:
+        answer = _fallback_answer(question, retrieval, f"LLM недоступна: {type(exc).__name__}")
     save_answer(index_dir / MEMORY_FILE, question, answer, retrieval["matches"])
     return {
         "question": question,
@@ -320,18 +390,28 @@ async def stream_ragpipe_answer(
     settings = get_settings()
     selected_model = model or settings.chat_model
     chunks: list[str] = []
-    async for chunk in _ollama_generate_stream((ollama_url or settings.ollama_url).rstrip("/"), selected_model, prompt):
-        chunks.append(chunk)
-        yield chunk
+    try:
+        async for chunk in _ollama_generate_stream(
+            (ollama_url or settings.ollama_url).rstrip("/"),
+            selected_model,
+            prompt,
+            settings.chat_timeout,
+            settings.chat_num_predict,
+        ):
+            chunks.append(chunk)
+            yield chunk
+    except httpx.HTTPError as exc:
+        fallback = _fallback_answer(question, retrieval, f"LLM недоступна: {type(exc).__name__}")
+        chunks.append(fallback)
+        yield fallback
     save_answer(index_dir / MEMORY_FILE, question, "".join(chunks), retrieval["matches"])
 
 
 def _chat_prompt(index_dir: Path, question: str, retrieval: dict[str, Any]) -> str:
+    settings = get_settings()
     matches = retrieval.get("matches", [])
     top_texts = [str(match.get("text", "")) for match in matches]
     trend = "" if "курс" in question.lower() else detect_trend(top_texts)
-    memory_items = load_memory(index_dir / MEMORY_FILE)[-5:]
-
     context_blocks = []
     for index, match in enumerate(matches, start=1):
         context_blocks.append(
@@ -341,12 +421,11 @@ def _chat_prompt(index_dir: Path, question: str, retrieval: dict[str, Any]) -> s
                     f"source={match.get('source', '')}",
                     f"url={match.get('url', '')}",
                     f"published_at={match.get('published_at', '')}",
-                    str(match.get("text", ""))[:2200],
+                    str(match.get("text", ""))[: settings.chat_context_chars],
                 ]
             )
         )
     context = "\n\n---\n\n".join(context_blocks) or "Нет релевантного контекста."
-    memory_context = "\n".join(str(item.get("text", ""))[:800] for item in memory_items if item.get("text"))
     queries = "\n".join(f"- {query}" for query in retrieval.get("queries", []))
     return f"""
 {SYSTEM_PROMPT}
@@ -360,9 +439,6 @@ def _chat_prompt(index_dir: Path, question: str, retrieval: dict[str, Any]) -> s
 АКТУАЛЬНЫЕ ДАННЫЕ:
 {context}
 
-ИСТОРИЯ:
-{memory_context or "Нет истории."}
-
 ТРЕНД:
 {trend or "Не рассчитывался."}
 
@@ -370,22 +446,57 @@ def _chat_prompt(index_dir: Path, question: str, retrieval: dict[str, Any]) -> s
 """.strip()
 
 
-async def _ollama_generate(base_url: str, model: str, prompt: str) -> str:
-    async with httpx.AsyncClient(timeout=180.0) as client:
+def _fallback_answer(question: str, retrieval: dict[str, Any], reason: str) -> str:
+    matches = retrieval.get("matches", [])
+    if not matches:
+        return f"{reason}. Релевантный контекст в RAG-индексе не найден."
+
+    lines = [
+        f"{reason}. Ниже краткий вывод по найденному RAG-контексту без генеративной обработки.",
+        "",
+        f"Вопрос: {question}",
+        "",
+        "Ключевые найденные материалы:",
+    ]
+    for index, match in enumerate(matches[:3], start=1):
+        title = str(match.get("title", "")).strip() or "Без заголовка"
+        source = str(match.get("source", "")).strip() or "неизвестный источник"
+        published_at = str(match.get("published_at", "")).strip()
+        text = " ".join(str(match.get("text", "")).split())[:500]
+        lines.append(f"{index}. {title} ({source}, {published_at})")
+        if text:
+            lines.append(f"   Контекст: {text}")
+
+    lines.append("")
+    lines.append(
+        "Интерпретация: система нашла релевантные новости/сводки, но локальная LLM не успела сформировать ответ. "
+        "Для полного анализа повторите запрос или уменьшите TOP_K/контекст."
+    )
+    return "\n".join(lines)
+
+
+async def _ollama_generate(base_url: str, model: str, prompt: str, timeout: float, num_predict: int) -> str:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
             f"{base_url}/api/generate",
-            json={"model": model, "prompt": prompt, "stream": False},
+            json={"model": model, "prompt": prompt, "stream": False, "options": {"num_predict": num_predict}},
         )
         response.raise_for_status()
         payload = response.json()
     return str(payload.get("response", "")).strip()
 
 
-async def _ollama_generate_stream(base_url: str, model: str, prompt: str) -> AsyncIterator[str]:
-    async with httpx.AsyncClient(timeout=180.0) as client, client.stream(
+async def _ollama_generate_stream(
+    base_url: str,
+    model: str,
+    prompt: str,
+    timeout: float,
+    num_predict: int,
+) -> AsyncIterator[str]:
+    async with httpx.AsyncClient(timeout=timeout) as client, client.stream(
         "POST",
         f"{base_url}/api/generate",
-        json={"model": model, "prompt": prompt, "stream": True},
+        json={"model": model, "prompt": prompt, "stream": True, "options": {"num_predict": num_predict}},
     ) as response:
         response.raise_for_status()
         async for line in response.aiter_lines():
@@ -400,6 +511,7 @@ async def _ollama_generate_stream(base_url: str, model: str, prompt: str) -> Asy
 
 
 async def _build(args: argparse.Namespace) -> None:
+    _configure_logging()
     input_paths = [Path(path) for path in args.input]
     result = await build_ragpipe_index(
         input_paths[0],
@@ -412,6 +524,10 @@ async def _build(args: argparse.Namespace) -> None:
         [Path(path) for path in args.text_input],
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def _configure_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 async def _query(args: argparse.Namespace) -> None:

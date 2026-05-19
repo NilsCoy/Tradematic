@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from edmi.application.pipeline import NewsProcessingPipeline
 from edmi.config import get_settings
@@ -42,7 +43,7 @@ async def make_redis() -> Redis | None:
         redis = Redis.from_url(settings.redis_url, decode_responses=True)
         await redis.ping()
         return redis
-    except Exception:
+    except (OSError, RedisError):
         return None
 
 

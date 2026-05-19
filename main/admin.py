@@ -10,7 +10,7 @@ class UserTokenAdmin(admin.ModelAdmin):
     search_fields = ('username', 'token')  # Поля для поиска
     list_filter = ('created_at',)  # Фильтры справа
     readonly_fields = ('created_at',)  # Запрет редактирования поля
-    actions = ['delete_selected']
+    actions = ('delete_selected',)
 
     def short_token(self, obj):
         return obj.token[:10] + '...' if len(obj.token) > 10 else obj.token

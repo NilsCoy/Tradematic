@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,15 +22,41 @@ def keyword_score(query: str, document: str) -> float:
     return hits / len(keywords)
 
 
-def score_boost(document: str) -> float:
-    lowered = document.lower()
+def score_boost(document: RagDocument) -> float:
+    lowered = f"{document.source} {document.title} {document.text}".lower()
     score = 0.0
+    if document.source in {"market_brief.md", "market_brief.json", "asset_analysis.md", "asset_analysis.json"}:
+        score += 0.35
+    if document.source in {"processed_events", "rag_index"}:
+        score += 0.15
+    score += _recency_boost(document.published_at)
     for marker in ("курс", "ставка", "инфляц", "выручк", "прибыл", "санкц", "нефть", "газ", "цб", "фрс"):
         if marker in lowered:
             score += 0.1
-    if len(document) > 500:
+    for noise_marker in (
+        "motogp",
+        "гран-при",
+        "гонка",
+        "спорт",
+        "футбол",
+        "баскетбол",
+        "теннис",
+        "кинопрокат",
+        "режиссер",
+        "в ролях",
+        "жанр:",
+        "комедия",
+        "фильм",
+        "справочник",
+        "путеводитель",
+        "открыть справочник",
+        "подписывайтесь",
+    ):
+        if noise_marker in lowered:
+            score -= 1.0
+    if len(document.text) > 500:
         score += 0.1
-    return min(score, 1.0)
+    return max(min(score, 1.0), -1.0)
 
 
 def hybrid_search(
@@ -64,12 +91,15 @@ def hybrid_search(
 
         for index, document in enumerate(documents):
             scores[index] += 0.10 * keyword_score(query, document.text)
-            scores[index] += 0.05 * score_boost(document.text)
+            scores[index] += 0.05 * score_boost(document)
 
     ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-    candidates = [(score, index, documents[index].text) for index, score in ranked[: max(top_k * 4, top_k)]]
-    reranked = Reranker(settings).rerank(queries[0], candidates, top_k)
-    return [(score, documents[index]) for score, index, _text in reranked]
+    clean_ranked = [(index, score) for index, score in ranked if not _is_noise_document(documents[index])]
+    candidate_source = clean_ranked or ranked
+    candidates = [(score, index, documents[index].text) for index, score in candidate_source[: max(top_k * 8, top_k)]]
+    reranked = Reranker(settings).rerank(queries[0], candidates, max(top_k * 3, top_k))
+    selected = reranked[:top_k]
+    return [(score, documents[index]) for score, index, _text in selected]
 
 
 def match_payload(score: float, document: RagDocument) -> dict[str, Any]:
@@ -90,3 +120,46 @@ def _normalize(value: float, max_value: float) -> float:
     if max_value <= 0:
         return 0.0
     return value / max_value
+
+
+def _recency_boost(published_at: str) -> float:
+    if not published_at:
+        return 0.0
+    try:
+        published = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    if published.tzinfo is None:
+        published = published.replace(tzinfo=timezone.utc)
+    age_days = (datetime.now(timezone.utc) - published.astimezone(timezone.utc)).days
+    if age_days <= 1:
+        return 0.4
+    if age_days <= 7:
+        return 0.2
+    if age_days > 365:
+        return -0.6
+    if age_days > 30:
+        return -0.2
+    return 0.0
+
+
+def _is_noise_document(document: RagDocument) -> bool:
+    lowered = f"{document.source} {document.title} {document.text}".lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "motogp",
+            "гран-при",
+            "гонка",
+            "кинопрокат",
+            "режиссер",
+            "в ролях",
+            "жанр:",
+            "комедия",
+            "фильм",
+            "справочник",
+            "путеводитель",
+            "открыть справочник",
+            "подписывайтесь",
+        )
+    )

@@ -1,5 +1,4 @@
 import csv
-from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import grpc
@@ -14,17 +13,16 @@ import numpy as np
 # Инициализация клиента
 def get_client(token):
     """Получает клинета по токену"""
-    with ti.Client(token) as client:
-        try:
-            return ti.Client(token)
-        except grpc.RpcError as e:
-            print(f"Ошибка получения данных: {e.details()}")
+    try:
+        return ti.Client(token)
+    except grpc.RpcError as e:
+        print(f"Ошибка получения данных: {e.details()}")
 
 
 # Получение исторических данных
 def get_hourly_data(client, figi, hours=24, max_chunk_hours=600):
     """Почасовая история"""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     all_candles = []
 
     for i in tqdm(range(0, hours, max_chunk_hours), desc='Загрузка часовых данных'):
@@ -42,7 +40,7 @@ def get_hourly_data(client, figi, hours=24, max_chunk_hours=600):
 
 def get_daily_data(client, figi, days=365, max_chunk_days=365):
     """Дневная история"""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     all_candles = []
 
     for i in tqdm(range(0, days, max_chunk_days), desc='Загрузка дневных данных'):
@@ -60,7 +58,7 @@ def get_daily_data(client, figi, days=365, max_chunk_days=365):
 
 def get_weekly_data(client, figi, weeks=52, max_chunk_weeks=104):
     """Недельная история"""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     all_candles = []
 
     for i in tqdm(range(0, weeks, max_chunk_weeks), desc='Загрузка недельных данных'):
@@ -78,7 +76,7 @@ def get_weekly_data(client, figi, weeks=52, max_chunk_weeks=104):
 
 def get_monthly_data(client, figi, months=60, max_chunk_months=24):
     """Месячная история"""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     all_candles = []
 
     for i in tqdm(range(0, months, max_chunk_months), desc='Загрузка месячных данных'):
@@ -260,10 +258,13 @@ def get_last_operations(token):
 
     for port in portfolio.positions:
         for op in operations.operations:
-            if port.position_uid == op.position_uid and port.figi == op.figi:
-                if op.type != 'Удержание комиссии за операцию':
-                    a.append(op)
-                    break
+            if (
+                port.position_uid == op.position_uid
+                and port.figi == op.figi
+                and op.type != 'Удержание комиссии за операцию'
+            ):
+                a.append(op)
+                break
     return a
 
 def get_current_prices(client, figis):

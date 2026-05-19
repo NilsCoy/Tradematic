@@ -42,6 +42,7 @@ def about_page(request) -> HttpResponse:
     return render(request, 'about.html')
 
 
+@login_required
 def panel(request):
     page = request.GET.get('page', 'default')
     templates = {
@@ -133,7 +134,7 @@ def _ragpipe_chat_response(request):
         {
             'question': question,
             'model': 'tradematic-analyst',
-            'top_k': 6,
+            'top_k': 1,
         }
     ).encode('utf-8')
     request_obj = Request(
@@ -143,10 +144,11 @@ def _ragpipe_chat_response(request):
         method='POST',
     )
     try:
-        with urlopen(request_obj, timeout=240) as response:
+        with urlopen(request_obj, timeout=600) as response:
             data = json.loads(response.read().decode('utf-8'))
     except HTTPError as exc:
-        return JsonResponse({'error': f'EDMI API error: {exc.code}'}, status=502)
+        detail = exc.read().decode('utf-8', errors='ignore')[:500]
+        return JsonResponse({'error': f'EDMI API error: {exc.code}', 'detail': detail}, status=502)
     except (URLError, TimeoutError, json.JSONDecodeError) as exc:
         return JsonResponse({'error': f'EDMI API unavailable: {exc}'}, status=502)
 

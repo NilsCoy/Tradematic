@@ -41,20 +41,19 @@ class NewsAggregatorRunner:
 
     async def collect_once(self) -> ParserRunResult:
         project_dir = _resolve_path(self.settings.news_aggregator_dir)
-        log_file = tempfile.NamedTemporaryFile(
+        with tempfile.NamedTemporaryFile(
             mode="w+",
             encoding="utf-8",
             prefix="edmi-news-aggregator-",
             suffix=".log",
             delete=False,
-        )
-        log_path = Path(log_file.name)
-        code = (
-            "import asyncio; "
-            "from app.service import NewsAggregationService; "
-            "print(asyncio.run(NewsAggregationService().collect_once()))"
-        )
-        try:
+        ) as log_file:
+            log_path = Path(log_file.name)
+            code = (
+                "import asyncio; "
+                "from app.service import NewsAggregationService; "
+                "print(asyncio.run(NewsAggregationService().collect_once()))"
+            )
             process = await asyncio.create_subprocess_exec(
                 "uv",
                 "run",
@@ -73,8 +72,6 @@ class NewsAggregatorRunner:
             except TimeoutError:
                 process.kill()
                 return_code = await process.wait()
-        finally:
-            log_file.close()
 
         tail = _tail_lines(log_path)
         return ParserRunResult(

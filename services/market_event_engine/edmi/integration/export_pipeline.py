@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import csv
 import json
+import logging
 from pathlib import Path
 
 from edmi.application.factory import make_pipeline
@@ -50,6 +51,8 @@ STATE_FIELDNAMES = (
     "published_at",
 )
 
+logger = logging.getLogger(__name__)
+
 
 async def export_processed_events(
     input_csv: Path,
@@ -59,12 +62,27 @@ async def export_processed_events(
     newest_first: bool,
     state_csv: Path | None = None,
     append: bool = False,
+    log_every: int = 10,
 ) -> dict[str, int | str]:
     settings = get_settings()
     pipeline = await make_pipeline()
     embedding_service = EmbeddingService(settings)
     state = _load_state(state_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
+    logger.info(
+        "EDMI export started: input=%s output=%s limit=%s assets=%s state=%s append=%s",
+        input_csv,
+        output_csv,
+        limit,
+        assets or [MARKET_ASSET],
+        state_csv or "",
+        append,
+    )
+    logger.info(
+        "EDMI export state loaded: hashes=%s embeddings=%s",
+        len(state["hashes"]),
+        len(state["embeddings"]),
+    )
 
     accepted = 0
     duplicates = 0
@@ -79,9 +97,24 @@ async def export_processed_events(
             iter_raw_news(input_csv, newest_first=newest_first),
             settings.batch_size,
         ):
+            logger.info(
+                "EDMI export batch received: batch_size=%s processed=%s accepted=%s duplicates=%s state_duplicates=%s",
+                len(batch),
+                processed,
+                accepted,
+                duplicates,
+                state_duplicates,
+            )
             for news in batch:
                 if limit is not None and processed >= limit:
                     _save_state(state_csv, state)
+                    logger.info(
+                        "EDMI export limit reached: processed=%s accepted=%s duplicates=%s state_duplicates=%s",
+                        processed,
+                        accepted,
+                        duplicates,
+                        state_duplicates,
+                    )
                     return _summary(input_csv, output_csv, accepted, duplicates, state_duplicates, processed)
                 cleaned_title = clean_text(news.title)
                 cleaned_text = clean_text(news.text)
@@ -89,6 +122,7 @@ async def export_processed_events(
                 if digest in state["hashes"]:
                     state_duplicates += 1
                     processed += 1
+                    _log_progress(log_every, processed, accepted, duplicates, state_duplicates, "state_duplicate")
                     continue
 
                 embedding = await embedding_service.embed(f"{cleaned_title}\n{cleaned_text}")
@@ -97,6 +131,7 @@ async def export_processed_events(
                     state["rows"].append(_state_row_from_news(digest, embedding, news))
                     state_duplicates += 1
                     processed += 1
+                    _log_progress(log_every, processed, accepted, duplicates, state_duplicates, "semantic_duplicate")
                     continue
 
                 try:
@@ -113,8 +148,17 @@ async def export_processed_events(
                     duplicates += 1
                 finally:
                     processed += 1
+                    _log_progress(log_every, processed, accepted, duplicates, state_duplicates, "processed")
 
     _save_state(state_csv, state)
+    logger.info(
+        "EDMI export finished: processed=%s accepted=%s duplicates=%s state_duplicates=%s output=%s",
+        processed,
+        accepted,
+        duplicates,
+        state_duplicates,
+        output_csv,
+    )
     return _summary(input_csv, output_csv, accepted, duplicates, state_duplicates, processed)
 
 
@@ -178,6 +222,7 @@ def _summary(
 
 
 async def _run(args: argparse.Namespace) -> None:
+    _configure_logging()
     assets = _load_assets(args.asset, Path(args.assets_file) if args.assets_file else None)
     summary = await export_processed_events(
         input_csv=Path(args.input),
@@ -187,6 +232,7 @@ async def _run(args: argparse.Namespace) -> None:
         newest_first=not args.file_order,
         state_csv=Path(args.state_file) if args.state_file else None,
         append=args.append,
+        log_every=args.log_every,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
@@ -228,6 +274,30 @@ def _is_semantic_duplicate(
     threshold: float,
 ) -> bool:
     return any(cosine_similarity(embedding, existing) >= threshold for existing in existing_embeddings)
+
+
+def _log_progress(
+    log_every: int,
+    processed: int,
+    accepted: int,
+    duplicates: int,
+    state_duplicates: int,
+    reason: str,
+) -> None:
+    if log_every <= 0 or processed % log_every != 0:
+        return
+    logger.info(
+        "EDMI export progress: processed=%s accepted=%s duplicates=%s state_duplicates=%s last=%s",
+        processed,
+        accepted,
+        duplicates,
+        state_duplicates,
+        reason,
+    )
+
+
+def _configure_logging() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def _state_row(event: ProcessedEvent) -> dict[str, str]:
@@ -274,5 +344,6 @@ def main() -> None:
     parser.add_argument("--file-order", action="store_true")
     parser.add_argument("--state-file", help="Persistent exact and semantic dedup state CSV")
     parser.add_argument("--append", action="store_true", help="Append accepted events to output instead of overwriting it")
+    parser.add_argument("--log-every", type=int, default=10, help="Log processing progress every N rows; 0 disables progress logs")
     args = parser.parse_args()
     asyncio.run(_run(args))

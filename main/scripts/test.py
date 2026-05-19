@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from main.scripts.api import (
@@ -44,5 +44,4 @@ def test() -> None:
 
 
 if __name__ == '__main__':
-    print(datetime.now() + timedelta(hours=1))
-    pass
+    print(datetime.now(timezone.utc) + timedelta(hours=1))

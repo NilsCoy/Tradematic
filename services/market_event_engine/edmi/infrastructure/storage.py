@@ -102,27 +102,26 @@ class AsyncpgEventRepository:
         self.pool = pool
 
     async def save_processed_event(self, event: ProcessedEvent) -> None:
-        async with self.pool.acquire() as connection:
-            async with connection.transaction():
-                await connection.execute(
-                    """
+        async with self.pool.acquire() as connection, connection.transaction():
+            await connection.execute(
+                """
                     INSERT INTO news (
                       id, source, title, text, url, text_hash, embedding, published_at
                     )
                     VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8)
                     ON CONFLICT (text_hash) DO NOTHING
                     """,
-                    event.news_id,
-                    event.raw_news.source,
-                    event.raw_news.title,
-                    event.raw_news.text,
-                    str(event.raw_news.url),
-                    event.text_hash,
-                    _vector_literal(event.embedding),
-                    event.raw_news.published_at,
-                )
-                await connection.execute(
-                    """
+                event.news_id,
+                event.raw_news.source,
+                event.raw_news.title,
+                event.raw_news.text,
+                str(event.raw_news.url),
+                event.text_hash,
+                _vector_literal(event.embedding),
+                event.raw_news.published_at,
+            )
+            await connection.execute(
+                """
                     INSERT INTO events (
                       id, event_type, confidence, centroid_embedding, entities
                     )
@@ -133,24 +132,24 @@ class AsyncpgEventRepository:
                       centroid_embedding = EXCLUDED.centroid_embedding,
                       entities = EXCLUDED.entities
                     """,
-                    event.id,
-                    event.classification.event_type.value,
-                    event.classification.confidence,
-                    _vector_literal(event.embedding),
-                    event.entities.model_dump_json(),
-                )
-                await connection.execute(
-                    """
+                event.id,
+                event.classification.event_type.value,
+                event.classification.confidence,
+                _vector_literal(event.embedding),
+                event.entities.model_dump_json(),
+            )
+            await connection.execute(
+                """
                     INSERT INTO event_news (event_id, news_id)
                     VALUES ($1, $2)
                     ON CONFLICT DO NOTHING
                     """,
-                    event.id,
-                    event.news_id,
-                )
-                for asset, relation in event.asset_relations.items():
-                    await connection.execute(
-                        """
+                event.id,
+                event.news_id,
+            )
+            for asset, relation in event.asset_relations.items():
+                await connection.execute(
+                    """
                         INSERT INTO event_asset_relation (
                           event_id, asset, level, confidence, explanation
                         )
@@ -160,14 +159,14 @@ class AsyncpgEventRepository:
                           confidence = EXCLUDED.confidence,
                           explanation = EXCLUDED.explanation
                         """,
-                        event.id,
-                        asset,
-                        relation.level.value,
-                        relation.confidence,
-                        relation.explanation,
-                    )
-                for asset, effect in event.market_effects.items():
-                    await self._save_asset_effect(connection, event.id, asset, effect)
+                    event.id,
+                    asset,
+                    relation.level.value,
+                    relation.confidence,
+                    relation.explanation,
+                )
+            for asset, effect in event.market_effects.items():
+                await self._save_asset_effect(connection, event.id, asset, effect)
 
     async def find_similar_news(self, embedding: list[float], threshold: float) -> UUID | None:
         async with self.pool.acquire() as connection:
@@ -267,10 +266,9 @@ class AsyncpgEventRepository:
         relation: RelevanceClassification,
         effect: MarketEffect,
     ) -> None:
-        async with self.pool.acquire() as connection:
-            async with connection.transaction():
-                await connection.execute(
-                    """
+        async with self.pool.acquire() as connection, connection.transaction():
+            await connection.execute(
+                """
                     INSERT INTO event_asset_relation (
                       event_id, asset, level, confidence, explanation
                     )
@@ -280,13 +278,13 @@ class AsyncpgEventRepository:
                       confidence = EXCLUDED.confidence,
                       explanation = EXCLUDED.explanation
                     """,
-                    event_id,
-                    asset.upper(),
-                    relation.level.value,
-                    relation.confidence,
-                    relation.explanation,
-                )
-                await self._save_asset_effect(connection, event_id, asset.upper(), effect)
+                event_id,
+                asset.upper(),
+                relation.level.value,
+                relation.confidence,
+                relation.explanation,
+            )
+            await self._save_asset_effect(connection, event_id, asset.upper(), effect)
 
     @staticmethod
     async def _save_asset_effect(connection, event_id: UUID, asset: str, effect: MarketEffect) -> None:

@@ -75,7 +75,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await response.json();
             pending.remove();
-            appendRagMessage(messages, response.ok ? data.response : data.error || 'Ошибка запроса', 'bot');
+            const errorText = data.detail ? `${data.error}: ${data.detail}` : data.error || 'Ошибка запроса';
+            appendRagMessage(messages, response.ok ? data.response : errorText, 'bot');
         } catch (error) {
             pending.remove();
             appendRagMessage(messages, `Ошибка соединения: ${error}`, 'bot');

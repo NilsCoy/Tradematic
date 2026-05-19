@@ -5,11 +5,11 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
 
-    dependencies = [
+    dependencies = [  # noqa: RUF012
         ('main', '0001_initial'),
     ]
 
-    operations = [
+    operations = [  # noqa: RUF012
         migrations.AlterUniqueTogether(
             name='usertokens',
             unique_together={('username', 'token')},

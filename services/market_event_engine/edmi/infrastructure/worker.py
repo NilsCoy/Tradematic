@@ -30,7 +30,7 @@ settings = get_settings()
 
 
 class WorkerSettings:
-    functions = [process_news, process_batch]
+    functions = (process_news, process_batch)
     redis_settings = redis_settings_from_url(settings.redis_url)
     max_jobs = settings.queue_max_jobs
     retry_jobs = True
